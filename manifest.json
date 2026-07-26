@@ -1,0 +1,9 @@
+{
+  "name": "Mi Administración",
+  "short_name": "Mi Admin",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#16181c",
+  "theme_color": "#16181c",
+  "icons": []
+}

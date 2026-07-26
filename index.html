@@ -1,0 +1,1558 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Mi Administración</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16181c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mi Administración">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root {
+    --bg: #16181c;
+    --card: #22252b;
+    --card-2: #2b2f37;
+    --text: #f2f2f2;
+    --muted: #9aa0a8;
+    --green: #4cd964;
+    --red: #ff5b5b;
+    --accent: #4ea8ff;
+    --border: #34383f;
+
+    /* Escala de radios (3 niveles + círculos/píldoras como excepción documentada) */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 20px;
+
+    /* Escala tipográfica compartida */
+    --fs-hero: 24px;
+    --fs-title: 19px;
+    --fs-body: 15px;
+    --fs-label: 15px;
+    --fs-tile: 14px;
+    --fs-meta: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #app { max-width: 480px; margin: 0 auto; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* ---- Login ---- */
+  #loginScreen {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 32px 24px; gap: 16px;
+  }
+  #loginScreen h1 { text-align: center; margin: 0 0 8px; font-size: 26px; }
+  #loginScreen p.sub { text-align: center; color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  input, select, textarea {
+    width: 100%; padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);
+    background: var(--card); color: var(--text); font-size: 16px;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); }
+  label { font-size: 13px; color: var(--muted); margin-bottom: 4px; display: block; }
+  .field { margin-bottom: 10px; }
+  button {
+    cursor: pointer; border: none; border-radius: var(--radius-md); font-size: 16px; font-weight: 600;
+  }
+  .btn-primary {
+    width: 100%; padding: 14px; background: var(--accent); color: #06101d;
+  }
+  .error-msg { color: var(--red); font-size: 13px; min-height: 18px; text-align: center; }
+  .error-msg:empty { min-height: 0; }
+
+  /* ---- Main screen ---- */
+  #mainScreen { flex: 1; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  .top-fixed { flex-shrink: 0; }
+  .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  header {
+    padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header .app-name { font-weight: 700; font-size: 18px; }
+  header .logout { background: none; color: var(--muted); font-size: 13px; font-weight: 400; }
+
+  .period-selector {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 16px 20px 0;
+  }
+  .period-nav { display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; }
+  .period-arrow {
+    /* círculo intencional (única excepción a la escala de radios) — ‹ › leen mejor redondos */
+    background: var(--card); color: var(--text); width: 36px; height: 36px; border-radius: 50%;
+    font-size: 18px; display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .period-label { font-size: 16px; font-weight: 600; min-width: 130px; text-align: center; }
+  .period-mode-select {
+    padding: 7px 10px; border-radius: var(--radius-md); background: var(--card); color: var(--text);
+    border: 1px solid var(--border); font-size: 13px; font-weight: 600;
+  }
+
+  .balance-card {
+    position: relative; margin: 12px 20px; padding: 12px 20px; border-radius: var(--radius-md);
+    background: var(--card); text-align: center;
+  }
+  .label-row { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .balance-card .label { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+  /* .eye-btn: excepción intencional sin caja/fondo — toggle pegado al texto "Saldo", no una acción de toolbar */
+  .eye-btn { background: none; border: none; color: var(--muted); padding: 0; display: flex; align-items: center; justify-content: center; }
+  .eye-btn svg { width: 14px; height: 14px; }
+  .balance-card .amount { font-size: var(--fs-hero); font-weight: 700; }
+  .balance-card .amount.pos { color: var(--green); }
+  .balance-card .amount.neg { color: var(--red); }
+  .balance-sub { display: flex; justify-content: space-around; margin-top: 6px; }
+  .balance-sub div { text-align: center; }
+  .balance-sub .v { font-size: 20px; font-weight: 600; }
+  .balance-sub .l { font-size: var(--fs-meta); color: var(--muted); }
+
+  .btn-add {
+    border: 2px solid var(--green); background: transparent; color: var(--green);
+    border-radius: var(--radius-md); font-weight: 300;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+    width: 46px; height: 46px; font-size: 24px;
+  }
+  .balance-card .btn-add { position: absolute; top: 10px; left: 10px; }
+  .btn-add.sm { width: 30px; height: 30px; font-size: 18px; border-radius: var(--radius-sm); }
+  .btn-add.lg { width: 48px; height: 48px; font-size: 26px; }
+
+  .balance-btn {
+    position: absolute; top: 10px; width: 46px; height: 46px; border-radius: var(--radius-md);
+    font-size: 24px; font-weight: 300; border: 2px solid; background: transparent;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .balance-btn.minus { right: 10px; color: var(--red); border-color: var(--red); }
+
+  .search-row {
+    padding: 0 20px; margin: 8px 0; display: flex; align-items: center;
+    justify-content: space-between; gap: 8px;
+  }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--card-2);
+    border: 1px solid var(--border); color: var(--muted); flex-shrink: 0; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .resumen-icon { color: var(--accent); border-color: var(--accent); margin-left: auto; }
+  .resumen-icon.active { background: var(--accent); color: #06101d; }
+  .search-row input {
+    flex: 1; width: auto; padding: 8px 14px; font-size: 14px; border-radius: var(--radius-md);
+  }
+
+  .section-title {
+    padding: 0 20px; color: var(--muted); font-size: 13px; text-transform: uppercase;
+    letter-spacing: .04em; margin: 8px 0;
+  }
+  #movList { padding: 0 20px 100px; display: flex; flex-direction: column; gap: 8px; }
+  .mov-item {
+    background: var(--card); border-radius: var(--radius-md); padding: 0 16px; height: 66px;
+    display: flex; align-items: center; gap: 12px; border: none; width: 100%;
+    color: var(--text); text-align: left;
+  }
+  .mov-item .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .mov-item .cat {
+    font-size: var(--fs-body); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mov-item .desc {
+    font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mov-item .right { flex-shrink: 0; text-align: right; }
+  .mov-item .amt { font-size: 16px; font-weight: 700; }
+  .mov-item .date { font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }
+  .mov-item .amt.pos { color: var(--green); }
+  .mov-item .amt.neg { color: var(--red); }
+  .empty-msg { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
+
+  /* ---- Componente compartido: ícono-badge de color de categoría ---- */
+  .icon-badge {
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
+  }
+  .icon-badge svg { width: 20px; height: 20px; }
+  .icon-badge.sm { width: 28px; height: 28px; border-radius: var(--radius-sm); }
+  .icon-badge.sm svg { width: 14px; height: 14px; }
+  .icon-badge.lg { width: 48px; height: 48px; border-radius: var(--radius-md); }
+  .icon-badge.lg svg { width: 24px; height: 24px; }
+
+  /* ---- Modal ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: flex; align-items: flex-end; justify-content: center; z-index: 50;
+  }
+  .modal {
+    background: var(--card); width: 100%; max-width: 480px; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
+    max-height: 92vh; overflow-y: auto;
+  }
+  .modal h2 { margin: 0; font-size: var(--fs-title); }
+  .modal-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .fecha-pill-wrap { position: relative; flex-shrink: 0; }
+  .fecha-pill-wrap span {
+    display: inline-block; background: var(--card-2); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 7px 12px; font-size: 14px; color: var(--text); white-space: nowrap;
+  }
+  .fecha-pill-wrap input[type="date"] {
+    position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; padding: 0; border: none;
+  }
+  .btn-secondary {
+    padding: 11px 16px; background: var(--card-2); color: var(--text); border: 1px solid var(--border);
+  }
+  .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+  .modal-actions button { flex: 1; padding: 11px; }
+
+  .modal-actions-3 { display: flex; gap: 8px; margin-top: 4px; align-items: stretch; }
+  .modal-actions-3 .btn-secondary, .modal-actions-3 .btn-primary { flex: 1; padding: 11px; }
+  .btn-icon-danger {
+    flex: 0 0 46px; width: 46px; background: var(--card-2); color: var(--red);
+    border: 1px solid var(--red); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .btn-icon-danger svg { width: 18px; height: 18px; }
+  .btn-icon-danger.sm { flex: 0 0 28px; width: 28px; height: 28px; border-radius: var(--radius-sm); }
+  .btn-icon-danger.sm svg { width: 14px; height: 14px; }
+
+  /* botón ▲▼ de reordenar — una sola definición, se usa en Categorías y Descripciones */
+  .reorder-btn { background: none; color: var(--muted); font-size: 11px; line-height: 1; padding: 4px 6px; }
+  .reorder-btn:disabled { opacity: .25; }
+
+  .new-cat-form { display: none; margin-top: 10px; padding: 14px; background: var(--card-2); border-radius: 12px; }
+  .new-cat-form.show { display: block; }
+
+  .monto-cat-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: stretch; }
+  .cat-select-btn {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text);
+    font-size: var(--fs-label); font-weight: 600; text-align: left;
+  }
+  .cat-select-btn.placeholder .cat-select-label { color: var(--muted); font-weight: 400; }
+  .cat-select-btn .cat-select-label {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .amount-display {
+    background: var(--card-2); border-radius: var(--radius-md); padding: 10px 16px; text-align: right;
+    font-size: 24px; font-weight: 700; margin-bottom: 8px; border: 1px solid var(--border);
+  }
+  .amount-display-sm {
+    flex: 0 0 38%; margin-bottom: 0; padding: 10px 6px; font-size: 22px; color: var(--text);
+  }
+  .amount-display-sm.pos { color: var(--green); }
+  .amount-display-sm.neg { color: var(--red); }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 32px; }
+  .keypad .key {
+    padding: 11px 0; background: var(--card-2); color: var(--text); border: 1px solid var(--border);
+    font-size: 20px; border-radius: var(--radius-md);
+  }
+  .keypad .key-back { color: var(--red); }
+
+  .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .cat-tile {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: 2px solid transparent; padding: 6px 2px; border-radius: var(--radius-md);
+  }
+  .cat-tile.selected { border-color: var(--accent); }
+  .cat-tile .name {
+    font-size: var(--fs-tile); font-weight: 600; color: var(--text); text-align: center; max-width: 80px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .desc-suggest-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .desc-suggest-chip {
+    padding: 8px 14px; border-radius: var(--radius-lg); background: var(--card-2); border: 2px solid transparent;
+    color: var(--text); font-size: 13px; font-weight: 600;
+  }
+
+  .header-actions { display: flex; align-items: center; gap: 14px; }
+  /* Exportar: solo tiene sentido en desktop (pegar en Excel) — el celu nunca cumple este ancho */
+  .export-btn { display: none; }
+  @media (min-width: 700px) {
+    .export-btn { display: flex; }
+  }
+
+  .icon-opt {
+    background: var(--card-2); border: 2px solid transparent; border-radius: var(--radius-sm);
+    padding: 8px 0; display: flex; align-items: center; justify-content: center; color: var(--text);
+  }
+  .icon-opt svg { width: 18px; height: 18px; }
+  .icon-opt.selected { border-color: var(--accent); background: var(--card); color: var(--accent); }
+  .icon-opt.used { opacity: .4; cursor: not-allowed; color: #fff; }
+  .icon-opt.used.selected { opacity: .7; }
+
+  .section-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .icon-grid-full {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 2px;
+    max-height: 208px; overflow-y: auto; padding: 4px 2px;
+  }
+  .icon-grid-full .icon-opt {
+    padding: 11px 0; border-radius: var(--radius-md);
+  }
+  .icon-grid-full .icon-opt svg { width: 20px; height: 20px; }
+
+  .cat-manage-list {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; padding-right: 2px;
+  }
+  #catListIngreso { max-height: 148px; }
+  #catListEgreso { max-height: 148px; }
+  .cat-card {
+    background: var(--card-2); border-radius: var(--radius-md); padding: 4px 8px; height: 44px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cat-card-main {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none;
+    border: none; padding: 0; color: var(--text); text-align: left;
+  }
+  .cat-card-main .name {
+    flex: 1; min-width: 0; font-size: var(--fs-tile); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cat-card-reorder { display: flex; flex-direction: column; justify-content: center; flex-shrink: 0; }
+  .desc-badge {
+    min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px; flex-shrink: 0;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+    font-size: var(--fs-meta); font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+  .desc-badge.has-items { color: var(--accent); border-color: var(--accent); }
+
+  .desc-manage-list {
+    display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; padding-right: 2px;
+  }
+  .desc-row {
+    background: var(--card-2); border-radius: var(--radius-md); padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .desc-row .name {
+    flex: 1; min-width: 0; font-size: var(--fs-label); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .empty-cat { color: var(--muted); font-size: 13px; padding: 6px 0; grid-column: 1 / -1; }
+
+  .resumen-list { display: flex; flex-direction: column; gap: 6px; padding: 0 20px; }
+  .resumen-row { background: var(--card-2); border-radius: var(--radius-md); overflow: hidden; }
+  .resumen-row-main {
+    width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    background: none; border: none; color: var(--text); text-align: left;
+  }
+  .resumen-row-main .name {
+    flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .resumen-row-main .count {
+    font-size: var(--fs-meta); color: var(--muted); background: var(--card); border-radius: 999px;
+    padding: 1px 7px; flex-shrink: 0;
+  }
+  .resumen-row-main .total { font-size: 16px; font-weight: 700; flex-shrink: 0; }
+  .resumen-row-main .total.pos { color: var(--green); }
+  .resumen-row-main .total.neg { color: var(--red); }
+  .resumen-row-main .chevron { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; transition: transform .15s; }
+  .resumen-row.open .chevron { transform: rotate(180deg); }
+  .resumen-detail { padding: 4px 10px 8px 52px; display: flex; flex-direction: column; gap: 6px; }
+  .resumen-detail-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px;
+    width: 100%; background: none; border: none; color: var(--text); text-align: left; padding: 2px 0;
+  }
+  .resumen-detail-item .d-fecha { color: var(--muted); flex-shrink: 0; }
+  .resumen-detail-item .d-desc {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted);
+  }
+  .resumen-detail-item .d-monto { font-weight: 600; flex-shrink: 0; }
+  .resumen-detail-item .d-monto.pos { color: var(--green); }
+  .resumen-detail-item .d-monto.neg { color: var(--red); }
+  .empty-cat-resumen { color: var(--muted); font-size: 13px; padding: 6px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <div id="loginScreen">
+    <h1>Mi Administración</h1>
+    <p class="sub">Registro de ingresos y gastos</p>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" autocomplete="username" placeholder="tu@email.com">
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <div class="error-msg" id="loginError"></div>
+    <button class="btn-primary" id="loginBtn">Ingresar</button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="mainScreen" class="hidden">
+    <div class="top-fixed">
+      <header>
+        <div class="app-name">Mi Administración</div>
+        <div class="header-actions">
+          <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar período actual a CSV"><i data-lucide="download"></i></button>
+          <button class="logout" id="openCatManage">Categorías</button>
+          <button class="logout" id="logoutBtn">Salir</button>
+        </div>
+      </header>
+
+      <div class="period-selector">
+        <div class="period-nav">
+          <button class="period-arrow" id="prevPeriod">‹</button>
+          <div class="period-label" id="periodLabel">Julio 2026</div>
+          <button class="period-arrow" id="nextPeriod">›</button>
+        </div>
+        <select id="periodModeSelect" class="period-mode-select">
+          <option value="day">Día</option>
+          <option value="month" selected>Mes</option>
+          <option value="year">Año</option>
+        </select>
+      </div>
+
+      <div class="balance-card">
+        <button class="balance-btn minus" id="openEgreso">−</button>
+        <button class="btn-add" id="openIngreso">+</button>
+        <div class="label-row">
+          <div class="label">Saldo</div>
+          <button type="button" id="toggleAmounts" class="eye-btn"><i data-lucide="eye"></i></button>
+        </div>
+        <div class="amount" id="balanceAmount">$0</div>
+        <div class="balance-sub">
+          <div><div class="v" id="totalIngresos" style="color:var(--green)">$0</div><div class="l">Ingresos</div></div>
+          <div><div class="v" id="totalEgresos" style="color:var(--red)">$0</div><div class="l">Gastos</div></div>
+        </div>
+      </div>
+
+      <div class="search-row">
+        <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
+        <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
+        <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
+      </div>
+    </div>
+
+    <div class="scroll-area">
+      <div id="movView">
+        <div class="section-title" id="movListTitle">Movimientos</div>
+        <div id="movList"></div>
+      </div>
+      <div id="resumenView" class="hidden">
+        <div class="section-title">Ingreso</div>
+        <div id="resumenIngresoList" class="resumen-list"></div>
+        <div class="section-title" style="margin-top: 14px;">Gasto</div>
+        <div id="resumenGastoList" class="resumen-list"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL: nuevo movimiento -->
+<div class="modal-overlay hidden" id="movModal">
+  <div class="modal">
+    <div class="modal-header-row">
+      <h2 id="modalTitle">Nuevo ingreso</h2>
+      <div class="fecha-pill-wrap">
+        <span id="fechaPillText">hoy</span>
+        <input type="date" id="movFecha">
+      </div>
+    </div>
+
+    <!-- Pantalla 1: carga del movimiento (monto + categoría + descripción) -->
+    <div id="stepMonto">
+      <div class="monto-cat-row">
+        <div class="amount-display amount-display-sm" id="amountDisplay">0</div>
+        <button type="button" class="cat-select-btn placeholder" id="openCatStep">
+          <span class="cat-select-label" id="catSelectLabel">Elegir categoría</span>
+        </button>
+      </div>
+
+      <div class="field">
+        <input type="text" id="movDescripcion" placeholder="Descripción">
+        <div class="desc-suggest-row" id="descSuggestRow"></div>
+      </div>
+
+      <div class="field">
+        <div class="keypad" id="keypad">
+          <button type="button" class="key" data-key="1">1</button>
+          <button type="button" class="key" data-key="2">2</button>
+          <button type="button" class="key" data-key="3">3</button>
+          <button type="button" class="key" data-key="4">4</button>
+          <button type="button" class="key" data-key="5">5</button>
+          <button type="button" class="key" data-key="6">6</button>
+          <button type="button" class="key" data-key="7">7</button>
+          <button type="button" class="key" data-key="8">8</button>
+          <button type="button" class="key" data-key="9">9</button>
+          <button type="button" class="key" data-key=",">,</button>
+          <button type="button" class="key" data-key="0">0</button>
+          <button type="button" class="key key-back" data-key="back">⌫</button>
+        </div>
+      </div>
+
+      <div class="error-msg" id="movError"></div>
+
+      <div class="modal-actions-3">
+        <button class="btn-icon-danger hidden" id="deleteMovBtn" title="Eliminar movimiento"><i data-lucide="trash-2"></i></button>
+        <button class="btn-secondary" id="cancelMov">Cancelar</button>
+        <button class="btn-primary" id="saveMovBtn">Guardar</button>
+      </div>
+    </div>
+
+    <!-- Pantalla 2: elegir categoría -->
+    <div id="stepCategoria" class="hidden">
+      <div class="field" style="margin-bottom: 0;">
+        <label>Categoría</label>
+        <div class="cat-grid" id="catGrid"></div>
+        <div class="new-cat-form" id="newCatForm">
+          <input type="text" id="newCatNombre" placeholder="Nombre de la categoría">
+          <button class="btn-secondary" id="saveNewCat" style="width:100%; margin-top:10px;">Guardar categoría</button>
+        </div>
+      </div>
+
+      <div class="error-msg" id="catStepError" style="min-height: 0;"></div>
+
+      <button type="button" class="icon-btn" id="backToMonto" title="Atrás"><i data-lucide="arrow-left"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: gestionar categorías -->
+<div class="modal-overlay hidden" id="catManageModal">
+  <div class="modal">
+    <h2>Categorías</h2>
+
+    <div class="section-title-row">
+      <div class="section-title" style="padding:0; margin:0;">Ingreso</div>
+      <button type="button" class="add-cat-btn btn-add sm" data-tipo="ingreso">+</button>
+    </div>
+    <div id="catListIngreso" class="cat-manage-list"></div>
+
+    <div class="section-title-row" style="margin-top:14px;">
+      <div class="section-title" style="padding:0; margin:0;">Gasto</div>
+      <button type="button" class="add-cat-btn btn-add sm" data-tipo="egreso">+</button>
+    </div>
+    <div id="catListEgreso" class="cat-manage-list"></div>
+
+    <div class="error-msg" id="catManageError"></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="closeCatManage" style="flex:1;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: nueva categoría -->
+<div class="modal-overlay hidden" id="newCatModal">
+  <div class="modal">
+    <h2 id="newCatTitle">Nueva categoría</h2>
+    <div class="field">
+      <input type="text" id="manageCatNombre" placeholder="Nombre de la categoría">
+    </div>
+    <div class="icon-grid-full" id="manageIconGrid"></div>
+    <div class="error-msg" id="newCatError"></div>
+    <div class="modal-actions-3">
+      <button class="btn-icon-danger hidden" id="deleteCatBtn" title="Eliminar categoría"><i data-lucide="trash-2"></i></button>
+      <button class="btn-secondary" id="cancelNewCat">Cancelar</button>
+      <button class="btn-primary" id="manageSaveCat">Agregar categoría</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: gestionar descripciones precargadas de una categoría -->
+<div class="modal-overlay hidden" id="descManageModal">
+  <div class="modal">
+    <h2 id="descManageTitle">Descripciones</h2>
+    <div id="descList" class="desc-manage-list"></div>
+    <div class="field" style="margin-top: 14px;">
+      <input type="text" id="newDescTexto" placeholder="Nueva descripción">
+    </div>
+    <div class="error-msg" id="descManageError"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="addDescBtn" style="flex:1;">Agregar</button>
+      <button class="btn-secondary" id="closeDescManage" style="flex:1;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://qqttdzxcamszgrbjrnnr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdHRkenhjYW1zemdyYmpybm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjQzODcsImV4cCI6MjEwMDY0MDM4N30.rgK8c1qa-VZt5tto3M1oLddYaOIe2_NdX0NMQDDAVEw';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentTipo = 'ingreso'; // tipo del movimiento que se está creando
+let manageCatTipo = 'ingreso'; // tipo elegido en el form de la sección Categorías
+let manageCatIcono = 'tag'; // ícono elegido en el form de la sección Categorías
+let categorias = [];
+let descripcionesFrecuentes = [];
+let descManageCategoriaId = null; // categoría cuyas descripciones precargadas se están gestionando en el modal dedicado
+let montoStr = '0'; // monto que se va tipeando en el teclado numérico
+let currentMovs = []; // últimos movimientos cargados (para abrir edición sin re-consultar)
+let editingMovId = null; // id del movimiento en edición (null = alta nueva)
+let selectedCategoriaId = null; // categoría elegida para el movimiento que se está cargando/editando (Paso 2)
+
+const CAT_COLORS = [
+  '#ff6b6b','#4ecdc4','#ffa94d','#a78bfa','#4ea8ff','#4cd964','#f783ac','#f6c744',
+  '#ff8fab','#63e6be','#748ffc','#66d9e8','#ff9f43','#95e06c','#e599f7','#c0eb75'
+];
+function hashColor(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return CAT_COLORS[hash % CAT_COLORS.length];
+}
+// Color persistido en cada categoría (columna color); hashColor es solo un fallback
+// transitorio para categorías que todavía no lo tienen migrado.
+function colorOf(cat) {
+  return cat.color || hashColor(cat.id);
+}
+// Primer color de la paleta no usado por otra categoría del mismo tipo; si ya se
+// usaron todos, se reparte cíclicamente (con muchas categorías puede haber repetidos).
+function nextAvailableColor(tipo, excludeId) {
+  const used = new Set(categorias.filter(c => c.tipo === tipo && c.id !== excludeId).map(c => c.color).filter(Boolean));
+  const free = CAT_COLORS.find(c => !used.has(c));
+  return free || CAT_COLORS[used.size % CAT_COLORS.length];
+}
+
+const ICON_SET = [
+  'tag','shopping-cart','utensils','home','car','bus','plane','bike','fuel',
+  'heart-pulse','stethoscope','pill','dumbbell','scissors','shirt',
+  'gift','piggy-bank','credit-card','wallet','banknote','coins','receipt',
+  'briefcase','graduation-cap','book','gamepad-2','film','music','coffee',
+  'martini','baby','dog','cat','wrench','zap','flame','droplet','phone','shield','star'
+];
+
+function iconSvg(name) {
+  return `<i data-lucide="${name}"></i>`;
+}
+
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const today = new Date();
+let periodMode = 'month'; // 'day' | 'month' | 'year'
+let periodYear = today.getFullYear();
+let periodMonth = today.getMonth(); // 0-indexado
+let periodDay = today.getDate();
+
+const fmt = (n) => '$' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+function getPeriodRange() {
+  if (periodMode === 'year') {
+    return { start: `${periodYear}-01-01`, end: `${periodYear}-12-31` };
+  }
+  if (periodMode === 'day') {
+    const d = `${periodYear}-${String(periodMonth + 1).padStart(2, '0')}-${String(periodDay).padStart(2, '0')}`;
+    return { start: d, end: d };
+  }
+  const y = periodYear, m = periodMonth;
+  const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end };
+}
+
+function renderPeriodLabel() {
+  const label = document.getElementById('periodLabel');
+  if (periodMode === 'year') label.textContent = `${periodYear}`;
+  else if (periodMode === 'day') label.textContent = `${periodDay} de ${MESES[periodMonth]} ${periodYear}`;
+  else label.textContent = `${MESES[periodMonth]} ${periodYear}`;
+  document.getElementById('periodModeSelect').value = periodMode;
+}
+
+function refreshCurrentView() {
+  if (inResumenView) loadResumen(); else loadMovimientos();
+}
+
+document.getElementById('prevPeriod').addEventListener('click', () => {
+  if (periodMode === 'year') { periodYear--; }
+  else if (periodMode === 'day') {
+    const d = new Date(periodYear, periodMonth, periodDay - 1);
+    periodYear = d.getFullYear(); periodMonth = d.getMonth(); periodDay = d.getDate();
+  } else { periodMonth--; if (periodMonth < 0) { periodMonth = 11; periodYear--; } }
+  renderPeriodLabel();
+  refreshCurrentView();
+});
+
+document.getElementById('nextPeriod').addEventListener('click', () => {
+  if (periodMode === 'year') { periodYear++; }
+  else if (periodMode === 'day') {
+    const d = new Date(periodYear, periodMonth, periodDay + 1);
+    periodYear = d.getFullYear(); periodMonth = d.getMonth(); periodDay = d.getDate();
+  } else { periodMonth++; if (periodMonth > 11) { periodMonth = 0; periodYear++; } }
+  renderPeriodLabel();
+  refreshCurrentView();
+});
+
+document.getElementById('periodModeSelect').addEventListener('change', (e) => {
+  periodMode = e.target.value;
+  renderPeriodLabel();
+  refreshCurrentView();
+});
+
+// ---------- Auth ----------
+const loginScreen = document.getElementById('loginScreen');
+const mainScreen = document.getElementById('mainScreen');
+const loginError = document.getElementById('loginError');
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  loginError.textContent = '';
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) loginError.textContent = error.message;
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  if (!confirm('¿Salir de la cuenta?')) return;
+  await sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    loginScreen.classList.add('hidden');
+    mainScreen.classList.remove('hidden');
+    initData();
+  } else {
+    mainScreen.classList.add('hidden');
+    loginScreen.classList.remove('hidden');
+  }
+});
+
+// ---------- Data ----------
+async function initData() {
+  renderPeriodLabel();
+  await loadCategorias();
+  await loadDescripcionesFrecuentes();
+  await loadMovimientos();
+}
+
+async function loadCategorias() {
+  const { data, error } = await sb.from('categorias').select('*')
+    .order('orden', { ascending: true, nullsFirst: false })
+    .order('nombre');
+  if (error) { console.error(error); return; }
+  categorias = data || [];
+  await ensureCategoryColors();
+  renderCategoriaOptions();
+}
+
+async function loadDescripcionesFrecuentes() {
+  const { data, error } = await sb.from('descripciones_frecuentes').select('*')
+    .order('orden', { ascending: true, nullsFirst: false })
+    .order('texto');
+  if (error) { console.error(error); return; }
+  descripcionesFrecuentes = data || [];
+}
+
+// Migración puntual: categorías creadas antes de tener color asignado (o con
+// color repetido dentro de su tipo) reciben un color único la primera vez que se cargan.
+async function ensureCategoryColors() {
+  for (const tipo of ['ingreso', 'egreso']) {
+    const seen = new Set();
+    for (const c of categorias.filter(x => x.tipo === tipo)) {
+      if (c.color && !seen.has(c.color)) { seen.add(c.color); continue; }
+      const color = nextAvailableColor(tipo, c.id);
+      seen.add(color);
+      const { data } = await sb.from('categorias').update({ color }).eq('id', c.id).select().single();
+      if (data) { const idx = categorias.findIndex(x => x.id === c.id); if (idx !== -1) categorias[idx] = data; }
+    }
+  }
+}
+
+function renderCategoriaOptions() {
+  const grid = document.getElementById('catGrid');
+  const filtered = categorias.filter(c => c.tipo === currentTipo);
+  const tiles = filtered.map(c => `
+    <button type="button" class="cat-tile ${c.id === selectedCategoriaId ? 'selected' : ''}" data-id="${c.id}">
+      <div class="badge icon-badge lg" style="background:${colorOf(c)}">${iconSvg(c.icono || 'tag')}</div>
+      <div class="name">${c.nombre}</div>
+    </button>`).join('');
+  grid.innerHTML = tiles + `
+    <button type="button" class="cat-tile add-tile" id="toggleNewCat">
+      <div class="badge icon-badge lg btn-add lg">+</div>
+      <div class="name">Nueva</div>
+    </button>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+function updateCatSelectDisplay() {
+  const btn = document.getElementById('openCatStep');
+  const cat = categorias.find(c => c.id === selectedCategoriaId);
+  if (!cat) {
+    btn.classList.add('placeholder');
+    btn.innerHTML = `<span class="cat-select-label" id="catSelectLabel">Elegir categoría</span>`;
+    return;
+  }
+  btn.classList.remove('placeholder');
+  btn.innerHTML = `
+    <div class="cat-select-icon icon-badge sm" style="background:${colorOf(cat)}">${iconSvg(cat.icono || 'tag')}</div>
+    <span class="cat-select-label" id="catSelectLabel">${cat.nombre}</span>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+function selectCategoriaAndAdvance(id) {
+  selectedCategoriaId = id;
+  renderDescSuggestions();
+  updateCatSelectDisplay();
+  document.getElementById('stepCategoria').classList.add('hidden');
+  document.getElementById('stepMonto').classList.remove('hidden');
+}
+
+document.getElementById('openCatStep').addEventListener('click', () => {
+  renderCategoriaOptions();
+  document.getElementById('stepMonto').classList.add('hidden');
+  document.getElementById('stepCategoria').classList.remove('hidden');
+});
+
+document.getElementById('catGrid').addEventListener('click', (e) => {
+  if (e.target.closest('#toggleNewCat')) {
+    newCatForm.classList.toggle('show');
+    return;
+  }
+  const tile = e.target.closest('.cat-tile');
+  if (!tile) return;
+  selectCategoriaAndAdvance(tile.dataset.id);
+});
+
+function renderDescSuggestions() {
+  const row = document.getElementById('descSuggestRow');
+  const sugerencias = descripcionesFrecuentes.filter(d => d.categoria_id === selectedCategoriaId);
+  row.innerHTML = sugerencias.map(d => `
+    <button type="button" class="desc-suggest-chip" data-texto="${d.texto}">${d.texto}</button>`).join('');
+}
+
+document.getElementById('descSuggestRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('.desc-suggest-chip');
+  if (!chip) return;
+  document.getElementById('movDescripcion').value = chip.dataset.texto;
+});
+
+async function loadMovimientos() {
+  const { start, end } = getPeriodRange();
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('*, categorias(id, nombre, tipo, icono, color)')
+    .gte('fecha', start)
+    .lte('fecha', end)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  currentMovs = data || [];
+  document.getElementById('movListTitle').textContent = 'Movimientos';
+  renderMovimientos(currentMovs);
+  renderBalance(currentMovs);
+}
+
+// ---------- Exportar CSV (solo desktop) ----------
+function csvEscape(value) {
+  const str = String(value ?? '');
+  return /[;"\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+}
+
+function periodoFilenameSlug() {
+  if (periodMode === 'year') return `${periodYear}`;
+  if (periodMode === 'day') return `${String(periodDay).padStart(2, '0')}-${String(periodMonth + 1).padStart(2, '0')}-${periodYear}`;
+  return `${MESES[periodMonth].toLowerCase()}-${periodYear}`;
+}
+
+async function exportCSV() {
+  const { start, end } = getPeriodRange();
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('fecha, monto, descripcion, categorias(nombre, tipo)')
+    .gte('fecha', start)
+    .lte('fecha', end)
+    .order('fecha', { ascending: true });
+  if (error) { console.error(error); return; }
+
+  const filas = (data || []).map(m => {
+    const tipo = m.categorias ? m.categorias.tipo : null;
+    const signo = tipo === 'egreso' ? -1 : 1;
+    const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR');
+    const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
+    const montoStr = (signo * Number(m.monto)).toFixed(2).replace('.', ',');
+    return [fecha, categoria, m.descripcion || '', montoStr].map(csvEscape).join(';');
+  });
+
+  const header = ['Fecha', 'Categoría', 'Descripción', 'Monto'].map(csvEscape).join(';');
+  const BOM = String.fromCharCode(0xFEFF);
+  const csv = BOM + [header, ...filas].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `movimientos_${periodoFilenameSlug()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+let amountsHidden = false;
+let lastIngresos = 0, lastEgresos = 0;
+
+function renderBalance(movs) {
+  let ingresos = 0, egresos = 0;
+  for (const m of movs) {
+    const tipo = m.categorias ? m.categorias.tipo : null;
+    if (tipo === 'ingreso') ingresos += Number(m.monto);
+    else if (tipo === 'egreso') egresos += Number(m.monto);
+  }
+  lastIngresos = ingresos;
+  lastEgresos = egresos;
+  const saldo = ingresos - egresos;
+  const balanceEl = document.getElementById('balanceAmount');
+  balanceEl.textContent = fmt(saldo); // el Saldo siempre se muestra, no se enmascara
+  balanceEl.className = 'amount ' + (saldo >= 0 ? 'pos' : 'neg');
+  renderIngresosEgresos();
+}
+
+function renderIngresosEgresos() {
+  document.getElementById('totalIngresos').textContent = amountsHidden ? '********' : fmt(lastIngresos);
+  document.getElementById('totalEgresos').textContent = amountsHidden ? '********' : fmt(lastEgresos);
+}
+
+document.getElementById('toggleAmounts').addEventListener('click', () => {
+  amountsHidden = !amountsHidden;
+  document.getElementById('toggleAmounts').innerHTML = `<i data-lucide="${amountsHidden ? 'eye-off' : 'eye'}"></i>`;
+  if (window.lucide) lucide.createIcons();
+  renderIngresosEgresos();
+});
+
+function renderMovimientos(movs, emptyMsg) {
+  const list = document.getElementById('movList');
+  if (!movs.length) {
+    list.innerHTML = `<div class="empty-msg">${emptyMsg || 'Todavía no hay movimientos. Usá + o − para cargar el primero.'}</div>`;
+    return;
+  }
+  list.innerHTML = movs.map(m => {
+    const tipo = m.categorias ? m.categorias.tipo : 'egreso';
+    const catName = m.categorias ? m.categorias.nombre : '(sin categoría)';
+    const sign = tipo === 'ingreso' ? '+' : '−';
+    const cls = tipo === 'ingreso' ? 'pos' : 'neg';
+    const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+    const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
+    const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
+    return `
+      <button type="button" class="mov-item" data-id="${m.id}">
+        <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
+        <div class="mid">
+          <div class="cat">${catName}</div>
+          ${m.descripcion ? `<div class="desc">${m.descripcion}</div>` : ''}
+        </div>
+        <div class="right">
+          <div class="amt ${cls}">${sign} ${fmt(m.monto)}</div>
+          <div class="date ${cls}">${fecha}</div>
+        </div>
+      </button>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+document.getElementById('movList').addEventListener('click', (e) => {
+  const item = e.target.closest('.mov-item');
+  if (!item) return;
+  const mov = currentMovs.find(m => m.id === item.dataset.id);
+  if (mov) openEditMovModal(mov);
+});
+
+// ---------- Buscador (todo el historial, sin filtro de período) ----------
+const searchInputEl = document.getElementById('searchInput');
+document.getElementById('searchToggle').addEventListener('click', () => {
+  if (searchInputEl.classList.contains('hidden')) {
+    searchInputEl.classList.remove('hidden');
+    searchInputEl.focus();
+  } else {
+    searchInputEl.classList.add('hidden');
+    if (searchInputEl.value) { searchInputEl.value = ''; loadMovimientos(); }
+  }
+});
+
+let searchDebounce = null;
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  const text = e.target.value.trim();
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    if (text) runSearch(text); else loadMovimientos();
+  }, 300);
+});
+
+async function runSearch(text) {
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('*, categorias(id, nombre, tipo, icono, color)')
+    .ilike('descripcion', `%${text}%`)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  currentMovs = data || [];
+  document.getElementById('movListTitle').textContent = `Resultados (${currentMovs.length})`;
+  renderMovimientos(currentMovs, 'No se encontraron movimientos con esa descripción.');
+}
+
+// ---------- Modal: nuevo movimiento ----------
+const movModal = document.getElementById('movModal');
+const modalTitle = document.getElementById('modalTitle');
+const movError = document.getElementById('movError');
+const newCatForm = document.getElementById('newCatForm');
+const deleteMovBtn = document.getElementById('deleteMovBtn');
+
+const stepMonto = document.getElementById('stepMonto');
+const stepCategoria = document.getElementById('stepCategoria');
+const catStepError = document.getElementById('catStepError');
+const movFechaInput = document.getElementById('movFecha');
+
+function updateFechaPill() {
+  const fecha = new Date(movFechaInput.value + 'T00:00:00');
+  document.getElementById('fechaPillText').textContent = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+movFechaInput.addEventListener('change', updateFechaPill);
+
+function formatMontoDisplay(str) {
+  const [intPart, decPart] = str.split(',');
+  const withDots = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return decPart !== undefined ? withDots + ',' + decPart : withDots;
+}
+
+function renderAmountDisplay() {
+  const el = document.getElementById('amountDisplay');
+  el.textContent = formatMontoDisplay(montoStr);
+  el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' ? 'pos' : 'neg');
+}
+
+function openModal(tipo) {
+  currentTipo = tipo;
+  editingMovId = null;
+  selectedCategoriaId = null;
+  modalTitle.textContent = tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto';
+  montoStr = '0';
+  renderAmountDisplay();
+  document.getElementById('movDescripcion').value = '';
+  movFechaInput.value = new Date().toISOString().slice(0, 10);
+  updateFechaPill();
+  movError.textContent = '';
+  catStepError.textContent = '';
+  newCatForm.classList.remove('show');
+  deleteMovBtn.classList.add('hidden');
+  updateCatSelectDisplay();
+  renderDescSuggestions();
+  stepMonto.classList.remove('hidden');
+  stepCategoria.classList.add('hidden');
+  movModal.classList.remove('hidden');
+}
+
+function openEditMovModal(mov) {
+  currentTipo = mov.categorias ? mov.categorias.tipo : 'egreso';
+  editingMovId = mov.id;
+  selectedCategoriaId = mov.categoria_id;
+  modalTitle.textContent = currentTipo === 'ingreso' ? 'Editar ingreso' : 'Editar gasto';
+  montoStr = String(mov.monto).replace('.', ',');
+  renderAmountDisplay();
+  document.getElementById('movDescripcion').value = mov.descripcion || '';
+  movFechaInput.value = mov.fecha;
+  updateFechaPill();
+  movError.textContent = '';
+  catStepError.textContent = '';
+  newCatForm.classList.remove('show');
+  deleteMovBtn.classList.remove('hidden');
+  updateCatSelectDisplay();
+  renderDescSuggestions();
+  stepMonto.classList.remove('hidden');
+  stepCategoria.classList.add('hidden');
+  movModal.classList.remove('hidden');
+}
+
+document.getElementById('keypad').addEventListener('click', (e) => {
+  const btn = e.target.closest('.key');
+  if (!btn) return;
+  const key = btn.dataset.key;
+  if (key === 'back') {
+    montoStr = montoStr.length > 1 ? montoStr.slice(0, -1) : '0';
+  } else if (key === ',') {
+    if (!montoStr.includes(',')) montoStr += ',';
+  } else {
+    montoStr = montoStr === '0' ? key : montoStr + key;
+  }
+  renderAmountDisplay();
+});
+
+document.getElementById('openIngreso').addEventListener('click', () => openModal('ingreso'));
+document.getElementById('openEgreso').addEventListener('click', () => openModal('egreso'));
+document.getElementById('cancelMov').addEventListener('click', () => movModal.classList.add('hidden'));
+
+document.getElementById('backToMonto').addEventListener('click', () => {
+  stepCategoria.classList.add('hidden');
+  stepMonto.classList.remove('hidden');
+});
+
+document.getElementById('saveMovBtn').addEventListener('click', () => {
+  const monto = parseFloat(montoStr.replace(',', '.'));
+  const descripcion = document.getElementById('movDescripcion').value.trim();
+  if (!monto || monto <= 0) { movError.textContent = 'Ingresá un monto válido'; return; }
+  if (!selectedCategoriaId) { movError.textContent = 'Elegí una categoría'; return; }
+  if (!descripcion) { movError.textContent = 'Completá la descripción'; return; }
+  movError.textContent = '';
+  guardarMovimiento(selectedCategoriaId);
+});
+
+function nextOrden(tipo) {
+  const same = categorias.filter(c => c.tipo === tipo);
+  return same.length ? Math.max(...same.map(c => c.orden ?? 0)) + 1 : 0;
+}
+
+// Dentro de un mismo tipo (ingreso/gasto), no se permite repetir nombre ni ícono.
+function catConflictError(tipo, nombre, icono, excludeId) {
+  const same = categorias.filter(c => c.tipo === tipo && c.id !== excludeId);
+  if (same.some(c => c.nombre.trim().toLowerCase() === nombre.trim().toLowerCase())) {
+    return 'Ya existe una categoría con ese nombre';
+  }
+  if (same.some(c => (c.icono || 'tag') === icono)) {
+    return 'Ya existe una categoría con ese ícono';
+  }
+  return null;
+}
+
+document.getElementById('saveNewCat').addEventListener('click', async () => {
+  const nombre = document.getElementById('newCatNombre').value.trim();
+  if (!nombre) { catStepError.textContent = 'Poné un nombre para la categoría'; return; }
+  const conflict = catConflictError(currentTipo, nombre, 'tag');
+  if (conflict) {
+    catStepError.textContent = conflict.includes('ícono')
+      ? conflict + ' — creala desde "Categorías" eligiendo un ícono distinto'
+      : conflict;
+    return;
+  }
+  const { data: userData } = await sb.auth.getUser();
+  const { data, error } = await sb.from('categorias')
+    .insert({
+      nombre, tipo: currentTipo, icono: 'tag', orden: nextOrden(currentTipo),
+      color: nextAvailableColor(currentTipo), user_id: userData.user.id
+    })
+    .select().single();
+  if (error) { catStepError.textContent = error.message; return; }
+  categorias.push(data);
+  document.getElementById('newCatNombre').value = '';
+  newCatForm.classList.remove('show');
+  selectCategoriaAndAdvance(data.id);
+});
+
+async function guardarMovimiento(categoria_id) {
+  movError.textContent = '';
+  const monto = parseFloat(montoStr.replace(',', '.'));
+  const fecha = document.getElementById('movFecha').value;
+  const descripcion = document.getElementById('movDescripcion').value.trim();
+
+  if (editingMovId) {
+    const { error } = await sb.from('movimientos')
+      .update({ monto, categoria_id, fecha, descripcion: descripcion || null })
+      .eq('id', editingMovId);
+    if (error) { movError.textContent = error.message; return; }
+  } else {
+    const { data: userData } = await sb.auth.getUser();
+    const { error } = await sb.from('movimientos').insert({
+      monto, categoria_id, fecha, descripcion: descripcion || null, user_id: userData.user.id
+    });
+    if (error) { movError.textContent = error.message; return; }
+  }
+
+  movModal.classList.add('hidden');
+  await loadMovimientos();
+}
+
+deleteMovBtn.addEventListener('click', async () => {
+  if (!editingMovId) return;
+  if (!confirm('¿Eliminar este movimiento?')) return;
+  const { error } = await sb.from('movimientos').delete().eq('id', editingMovId);
+  if (error) { movError.textContent = error.message; return; }
+  movModal.classList.add('hidden');
+  await loadMovimientos();
+});
+
+// ---------- Modal: gestionar categorías ----------
+const catManageModal = document.getElementById('catManageModal');
+const catManageError = document.getElementById('catManageError');
+
+document.getElementById('openCatManage').addEventListener('click', () => {
+  catManageError.textContent = '';
+  renderCatManageLists();
+  renderIconGrid();
+  catManageModal.classList.remove('hidden');
+});
+document.getElementById('closeCatManage').addEventListener('click', () => catManageModal.classList.add('hidden'));
+
+function renderCatManageLists() {
+  const renderCards = (list) => list.length
+    ? list.map((c, i) => {
+        const count = descripcionesFrecuentes.filter(d => d.categoria_id === c.id).length;
+        return `
+        <div class="cat-card">
+          <button type="button" class="cat-card-main" data-id="${c.id}">
+            <div class="badge icon-badge sm" style="background:${colorOf(c)}">${iconSvg(c.icono || 'tag')}</div>
+            <div class="name">${c.nombre}</div>
+          </button>
+          <button type="button" class="desc-badge ${count ? 'has-items' : ''}" data-id="${c.id}" title="Descripciones precargadas">${count}</button>
+          <div class="cat-card-reorder">
+            <button type="button" class="reorder-btn" data-id="${c.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
+            <button type="button" class="reorder-btn" data-id="${c.id}" data-dir="1" ${i === list.length - 1 ? 'disabled' : ''}>▼</button>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-cat">Sin categorías todavía</div>';
+  const ordenar = (tipo) => categorias.filter(c => c.tipo === tipo)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  document.getElementById('catListIngreso').innerHTML = renderCards(ordenar('ingreso'));
+  document.getElementById('catListEgreso').innerHTML = renderCards(ordenar('egreso'));
+  if (window.lucide) lucide.createIcons();
+}
+
+function handleCatEdit(e) {
+  const btn = e.target.closest('.cat-card-main');
+  if (!btn) return;
+  const cat = categorias.find(c => c.id === btn.dataset.id);
+  if (cat) openEditCatModal(cat);
+}
+
+function handleDescBadge(e) {
+  const btn = e.target.closest('.desc-badge');
+  if (!btn) return;
+  const cat = categorias.find(c => c.id === btn.dataset.id);
+  if (cat) openDescManage(cat);
+}
+
+async function handleCatReorder(e) {
+  const btn = e.target.closest('.reorder-btn');
+  if (!btn || btn.disabled) return;
+  const id = btn.dataset.id;
+  const dir = Number(btn.dataset.dir);
+  const cat = categorias.find(c => c.id === id);
+  const sameType = categorias.filter(c => c.tipo === cat.tipo).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  const idx = sameType.findIndex(c => c.id === id);
+  const swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= sameType.length) return;
+  const other = sameType[swapIdx];
+  const ordenA = cat.orden ?? idx;
+  const ordenB = other.orden ?? swapIdx;
+  const { error } = await sb.from('categorias').update({ orden: ordenB }).eq('id', cat.id);
+  if (error) { catManageError.textContent = error.message; return; }
+  await sb.from('categorias').update({ orden: ordenA }).eq('id', other.id);
+  cat.orden = ordenB;
+  other.orden = ordenA;
+  renderCatManageLists();
+}
+
+document.getElementById('catListIngreso').addEventListener('click', (e) => { handleCatReorder(e); handleCatEdit(e); handleDescBadge(e); });
+document.getElementById('catListEgreso').addEventListener('click', (e) => { handleCatReorder(e); handleCatEdit(e); handleDescBadge(e); });
+
+// ---------- Modal: nueva/editar categoría (pantalla dedicada) ----------
+const newCatModal = document.getElementById('newCatModal');
+const newCatError = document.getElementById('newCatError');
+const deleteCatBtn = document.getElementById('deleteCatBtn');
+let editingCatId = null;
+
+function openNewCatModal(tipo) {
+  editingCatId = null;
+  manageCatTipo = tipo;
+  manageCatIcono = 'tag';
+  newCatError.textContent = '';
+  document.getElementById('newCatTitle').textContent = tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto';
+  document.getElementById('manageCatNombre').value = '';
+  document.getElementById('manageSaveCat').textContent = 'Agregar categoría';
+  deleteCatBtn.classList.add('hidden');
+  renderIconGrid();
+  newCatModal.classList.remove('hidden');
+}
+
+function openEditCatModal(cat) {
+  editingCatId = cat.id;
+  manageCatTipo = cat.tipo;
+  manageCatIcono = cat.icono || 'tag';
+  newCatError.textContent = '';
+  document.getElementById('newCatTitle').textContent = 'Editar categoría';
+  document.getElementById('manageCatNombre').value = cat.nombre;
+  document.getElementById('manageSaveCat').textContent = 'Guardar cambios';
+  deleteCatBtn.classList.remove('hidden');
+  renderIconGrid();
+  newCatModal.classList.remove('hidden');
+}
+
+document.getElementById('catManageModal').addEventListener('click', (e) => {
+  const addBtn = e.target.closest('.add-cat-btn');
+  if (!addBtn) return;
+  openNewCatModal(addBtn.dataset.tipo);
+});
+document.getElementById('cancelNewCat').addEventListener('click', () => newCatModal.classList.add('hidden'));
+
+function renderIconGrid() {
+  const el = document.getElementById('manageIconGrid');
+  // ícono -> categoría que ya lo usa (mismo tipo, sin contar la que se está editando)
+  const usedBy = {};
+  categorias.filter(c => c.tipo === manageCatTipo && c.id !== editingCatId)
+    .forEach(c => { usedBy[c.icono || 'tag'] = c; });
+  const sorted = [...ICON_SET].sort((a, b) => (!!usedBy[a]) - (!!usedBy[b]));
+  el.innerHTML = sorted.map(name => {
+    const usedCat = usedBy[name];
+    const selected = name === manageCatIcono;
+    const style = usedCat ? ` style="background:${colorOf(usedCat)}"` : '';
+    return `
+    <button type="button" class="icon-opt ${selected ? 'selected' : ''} ${usedCat ? 'used' : ''}"
+      data-icon="${name}" ${usedCat ? `disabled title="Ya la usa ${usedCat.nombre}"` : ''}${style}>
+      ${iconSvg(name)}
+    </button>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+document.getElementById('manageIconGrid').addEventListener('click', (e) => {
+  const btn = e.target.closest('.icon-opt');
+  if (!btn || btn.disabled) return;
+  manageCatIcono = btn.dataset.icon;
+  renderIconGrid();
+});
+
+document.getElementById('manageSaveCat').addEventListener('click', async (e) => {
+  newCatError.textContent = '';
+  const nombre = document.getElementById('manageCatNombre').value.trim();
+  if (!nombre) { newCatError.textContent = 'Poné un nombre para la categoría'; return; }
+  const conflict = catConflictError(manageCatTipo, nombre, manageCatIcono, editingCatId);
+  if (conflict) { newCatError.textContent = conflict; return; }
+  e.target.disabled = true;
+  if (editingCatId) {
+    const current = categorias.find(c => c.id === editingCatId);
+    const color = current && current.color ? current.color : nextAvailableColor(manageCatTipo, editingCatId);
+    const { data, error } = await sb.from('categorias')
+      .update({ nombre, icono: manageCatIcono, color })
+      .eq('id', editingCatId).select().single();
+    e.target.disabled = false;
+    if (error) { newCatError.textContent = error.message; return; }
+    const idx = categorias.findIndex(c => c.id === editingCatId);
+    if (idx !== -1) categorias[idx] = data;
+  } else {
+    const { data: userData } = await sb.auth.getUser();
+    const { data, error } = await sb.from('categorias')
+      .insert({
+        nombre, tipo: manageCatTipo, icono: manageCatIcono, orden: nextOrden(manageCatTipo),
+        color: nextAvailableColor(manageCatTipo), user_id: userData.user.id
+      })
+      .select().single();
+    e.target.disabled = false;
+    if (error) { newCatError.textContent = error.message; return; }
+    categorias.push(data);
+  }
+  newCatModal.classList.add('hidden');
+  renderCatManageLists();
+});
+
+deleteCatBtn.addEventListener('click', async () => {
+  if (!editingCatId) return;
+  const { count, error: countError } = await sb.from('movimientos')
+    .select('id', { count: 'exact', head: true }).eq('categoria_id', editingCatId);
+  if (countError) { newCatError.textContent = countError.message; return; }
+  if (count > 0) {
+    newCatError.textContent = `No se puede eliminar: tiene ${count} movimiento(s) cargado(s). Reasignalos o eliminalos primero.`;
+    return;
+  }
+  if (!confirm('¿Eliminar esta categoría?')) return;
+  const { error } = await sb.from('categorias').delete().eq('id', editingCatId);
+  if (error) { newCatError.textContent = error.message; return; }
+  categorias = categorias.filter(c => c.id !== editingCatId);
+  descripcionesFrecuentes = descripcionesFrecuentes.filter(d => d.categoria_id !== editingCatId);
+  newCatModal.classList.add('hidden');
+  renderCatManageLists();
+});
+
+// ---------- Modal: gestionar descripciones precargadas de una categoría ----------
+const descManageModal = document.getElementById('descManageModal');
+const descManageError = document.getElementById('descManageError');
+const newDescTexto = document.getElementById('newDescTexto');
+
+function openDescManage(cat) {
+  descManageCategoriaId = cat.id;
+  descManageError.textContent = '';
+  newDescTexto.value = '';
+  document.getElementById('descManageTitle').textContent = `Descripciones — ${cat.nombre}`;
+  renderDescManageList();
+  descManageModal.classList.remove('hidden');
+}
+
+document.getElementById('closeDescManage').addEventListener('click', () => {
+  descManageModal.classList.add('hidden');
+  renderCatManageLists();
+});
+
+function nextOrdenDesc(categoria_id) {
+  const same = descripcionesFrecuentes.filter(d => d.categoria_id === categoria_id);
+  return same.length ? Math.max(...same.map(d => d.orden ?? 0)) + 1 : 0;
+}
+
+function renderDescManageList() {
+  const list = descripcionesFrecuentes.filter(d => d.categoria_id === descManageCategoriaId)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  const el = document.getElementById('descList');
+  el.innerHTML = list.length ? list.map((d, i) => `
+    <div class="desc-row">
+      <div class="name">${d.texto}</div>
+      <button type="button" class="reorder-btn" data-id="${d.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
+      <button type="button" class="reorder-btn" data-id="${d.id}" data-dir="1" ${i === list.length - 1 ? 'disabled' : ''}>▼</button>
+      <button type="button" class="desc-delete btn-icon-danger sm" data-id="${d.id}"><i data-lucide="trash-2"></i></button>
+    </div>`).join('') : '<div class="empty-cat">Sin descripciones precargadas todavía</div>';
+  if (window.lucide) lucide.createIcons();
+}
+
+document.getElementById('addDescBtn').addEventListener('click', async () => {
+  descManageError.textContent = '';
+  const texto = newDescTexto.value.trim();
+  if (!texto) { descManageError.textContent = 'Poné un texto para la descripción'; return; }
+  const dup = descripcionesFrecuentes.some(d => d.categoria_id === descManageCategoriaId
+    && d.texto.toLowerCase() === texto.toLowerCase());
+  if (dup) { descManageError.textContent = 'Ya existe una descripción precargada con ese texto'; return; }
+  const { data: userData } = await sb.auth.getUser();
+  const { data, error } = await sb.from('descripciones_frecuentes')
+    .insert({
+      texto, categoria_id: descManageCategoriaId, orden: nextOrdenDesc(descManageCategoriaId),
+      user_id: userData.user.id
+    })
+    .select().single();
+  if (error) { descManageError.textContent = error.message; return; }
+  descripcionesFrecuentes.push(data);
+  newDescTexto.value = '';
+  renderDescManageList();
+});
+
+document.getElementById('descList').addEventListener('click', async (e) => {
+  const delBtn = e.target.closest('.desc-delete');
+  if (delBtn) {
+    if (!confirm('¿Eliminar esta descripción precargada?')) return;
+    const { error } = await sb.from('descripciones_frecuentes').delete().eq('id', delBtn.dataset.id);
+    if (error) { descManageError.textContent = error.message; return; }
+    descripcionesFrecuentes = descripcionesFrecuentes.filter(d => d.id !== delBtn.dataset.id);
+    renderDescManageList();
+    return;
+  }
+  const reBtn = e.target.closest('.reorder-btn');
+  if (!reBtn || reBtn.disabled) return;
+  const id = reBtn.dataset.id;
+  const dir = Number(reBtn.dataset.dir);
+  const desc = descripcionesFrecuentes.find(d => d.id === id);
+  const same = descripcionesFrecuentes.filter(d => d.categoria_id === desc.categoria_id).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  const idx = same.findIndex(d => d.id === id);
+  const swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= same.length) return;
+  const other = same[swapIdx];
+  const ordenA = desc.orden ?? idx;
+  const ordenB = other.orden ?? swapIdx;
+  const { error } = await sb.from('descripciones_frecuentes').update({ orden: ordenB }).eq('id', desc.id);
+  if (error) { descManageError.textContent = error.message; return; }
+  await sb.from('descripciones_frecuentes').update({ orden: ordenA }).eq('id', other.id);
+  desc.orden = ordenB;
+  other.orden = ordenA;
+  renderDescManageList();
+});
+
+// ---------- Vista: resumen por categoría (dentro del mismo scroll que Movimientos) ----------
+const movView = document.getElementById('movView');
+const resumenView = document.getElementById('resumenView');
+const openResumenBtn = document.getElementById('openResumen');
+let inResumenView = false;
+let resumenMovsById = {}; // para poder editar un movimiento tocado desde el detalle desplegado
+
+function showMovView() {
+  resumenView.classList.add('hidden');
+  movView.classList.remove('hidden');
+  inResumenView = false;
+  openResumenBtn.classList.remove('active');
+  document.getElementById('searchToggle').classList.remove('hidden');
+}
+
+async function showResumenView() {
+  await loadResumen();
+  movView.classList.add('hidden');
+  resumenView.classList.remove('hidden');
+  inResumenView = true;
+  openResumenBtn.classList.add('active');
+  // el buscador solo aplica a Movimientos, nunca al resumen por categoría
+  document.getElementById('searchToggle').classList.add('hidden');
+  if (!searchInputEl.classList.contains('hidden')) {
+    searchInputEl.classList.add('hidden');
+    if (searchInputEl.value) { searchInputEl.value = ''; loadMovimientos(); }
+  }
+}
+
+openResumenBtn.addEventListener('click', () => {
+  if (inResumenView) showMovView(); else showResumenView();
+});
+
+async function loadResumen() {
+  const { start, end } = getPeriodRange();
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('id, fecha, monto, descripcion, categoria_id, categorias(id, nombre, tipo, icono, color)')
+    .gte('fecha', start).lte('fecha', end);
+  if (error) { console.error(error); return; }
+
+  resumenMovsById = {};
+  const groups = {};
+  for (const m of data) {
+    if (!m.categorias) continue; // los movimientos "(sin categoría)" no entran en este resumen
+    resumenMovsById[m.id] = m;
+    const cid = m.categorias.id;
+    groups[cid] = groups[cid] || { cat: m.categorias, total: 0, movs: [] };
+    groups[cid].total += Number(m.monto);
+    groups[cid].movs.push(m);
+  }
+  const all = Object.values(groups);
+  const ingreso = all.filter(g => g.cat.tipo === 'ingreso').sort((a, b) => b.total - a.total);
+  const gasto = all.filter(g => g.cat.tipo === 'egreso').sort((a, b) => b.total - a.total);
+
+  renderResumenList('resumenIngresoList', ingreso, 'pos');
+  renderResumenList('resumenGastoList', gasto, 'neg');
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderResumenList(elId, groups, cls) {
+  const el = document.getElementById(elId);
+  if (!groups.length) {
+    el.innerHTML = '<div class="empty-cat-resumen">Sin movimientos en este período</div>';
+    return;
+  }
+  el.innerHTML = groups.map(g => `
+    <div class="resumen-row">
+      <button type="button" class="resumen-row-main" data-cat="${g.cat.id}">
+        <div class="badge icon-badge" style="background:${colorOf(g.cat)}">${iconSvg(g.cat.icono || 'tag')}</div>
+        <div class="name">${g.cat.nombre}</div>
+        <div class="count">${g.movs.length}</div>
+        <div class="total ${cls}">${fmt(g.total)}</div>
+        <i data-lucide="chevron-down" class="chevron"></i>
+      </button>
+      <div class="resumen-detail hidden"></div>
+    </div>`).join('');
+  el.querySelectorAll('.resumen-row-main').forEach(btn => {
+    btn.addEventListener('click', () => toggleResumenDetail(btn, groups, cls));
+  });
+}
+
+function toggleResumenDetail(btn, groups, cls) {
+  const row = btn.closest('.resumen-row');
+  const detail = row.querySelector('.resumen-detail');
+  const isOpen = row.classList.toggle('open');
+  if (!isOpen) { detail.classList.add('hidden'); return; }
+  const g = groups.find(x => x.cat.id === btn.dataset.cat);
+  const sorted = g.movs.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  detail.innerHTML = sorted.map(m => {
+    const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+    return `
+      <button type="button" class="resumen-detail-item" data-id="${m.id}">
+        <div class="d-fecha">${fecha}</div>
+        <div class="d-desc">${m.descripcion || '-'}</div>
+        <div class="d-monto ${cls}">${fmt(m.monto)}</div>
+      </button>`;
+  }).join('');
+  detail.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+resumenView.addEventListener('click', (e) => {
+  const item = e.target.closest('.resumen-detail-item');
+  if (!item) return;
+  const mov = resumenMovsById[item.dataset.id];
+  if (!mov) return;
+  showMovView();
+  openEditMovModal(mov);
+});
+</script>
+</body>
+</html>
