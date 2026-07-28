@@ -207,6 +207,14 @@
   .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
   .modal-actions button { flex: 1; padding: 11px; }
 
+  .desc-input-row { display: flex; align-items: center; gap: 8px; }
+  .desc-input-row input[type="text"] { flex: 1; }
+  .check-row-inline {
+    display: flex; align-items: center; gap: 5px; flex-shrink: 0; cursor: pointer;
+    font-size: var(--fs-meta); color: var(--muted); white-space: nowrap;
+  }
+  .check-row-inline input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
   .modal-actions-3 { display: flex; gap: 8px; margin-top: 4px; align-items: stretch; }
   .modal-actions-3 .btn-secondary, .modal-actions-3 .btn-primary { flex: 1; padding: 11px; }
   .btn-icon-danger {
@@ -467,7 +475,13 @@
       </div>
 
       <div class="field">
-        <input type="text" id="movDescripcion" placeholder="Descripción">
+        <div class="desc-input-row">
+          <input type="text" id="movDescripcion" placeholder="Descripción">
+          <label class="check-row-inline" for="saveAsFreqDesc" title="Guardar como descripción frecuente">
+            <input type="checkbox" id="saveAsFreqDesc">
+            <span>Frecuente</span>
+          </label>
+        </div>
         <div class="desc-suggest-row" id="descSuggestRow"></div>
       </div>
 
@@ -1024,6 +1038,7 @@ function openModal(tipo) {
   montoStr = '0';
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
+  document.getElementById('saveAsFreqDesc').checked = false;
   movFechaInput.value = new Date().toISOString().slice(0, 10);
   updateFechaPill();
   movError.textContent = '';
@@ -1045,6 +1060,7 @@ function openEditMovModal(mov) {
   montoStr = String(mov.monto).replace('.', ',');
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = mov.descripcion || '';
+  document.getElementById('saveAsFreqDesc').checked = false;
   movFechaInput.value = mov.fecha;
   updateFechaPill();
   movError.textContent = '';
@@ -1058,10 +1074,7 @@ function openEditMovModal(mov) {
   movModal.classList.remove('hidden');
 }
 
-document.getElementById('keypad').addEventListener('click', (e) => {
-  const btn = e.target.closest('.key');
-  if (!btn) return;
-  const key = btn.dataset.key;
+function pressKey(key) {
   if (key === 'back') {
     montoStr = montoStr.length > 1 ? montoStr.slice(0, -1) : '0';
   } else if (key === ',') {
@@ -1070,6 +1083,24 @@ document.getElementById('keypad').addEventListener('click', (e) => {
     montoStr = montoStr === '0' ? key : montoStr + key;
   }
   renderAmountDisplay();
+}
+
+document.getElementById('keypad').addEventListener('click', (e) => {
+  const btn = e.target.closest('.key');
+  if (!btn) return;
+  pressKey(btn.dataset.key);
+});
+
+// Permite cargar el monto con el teclado físico (útil en desktop) cuando el
+// modal de carga está abierto en la Pantalla 1 y el foco no está en un campo
+// de texto (Descripción, fecha, etc.) — si no, los dígitos van a ese campo.
+document.addEventListener('keydown', (e) => {
+  if (movModal.classList.contains('hidden') || stepMonto.classList.contains('hidden')) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  if (e.key >= '0' && e.key <= '9') { pressKey(e.key); e.preventDefault(); }
+  else if (e.key === ',' || e.key === '.') { pressKey(','); e.preventDefault(); }
+  else if (e.key === 'Backspace' || e.key === 'Delete') { pressKey('back'); e.preventDefault(); }
 });
 
 document.getElementById('openIngreso').addEventListener('click', () => openModal('ingreso'));
@@ -1149,6 +1180,21 @@ async function guardarMovimiento(categoria_id) {
       monto, categoria_id, fecha, descripcion: descripcion || null, user_id: userData.user.id
     });
     if (error) { movError.textContent = error.message; return; }
+  }
+
+  if (document.getElementById('saveAsFreqDesc').checked && descripcion) {
+    const dup = descripcionesFrecuentes.some(d => d.categoria_id === categoria_id
+      && d.texto.toLowerCase() === descripcion.toLowerCase());
+    if (!dup) {
+      const { data: userData } = await sb.auth.getUser();
+      const { data, error } = await sb.from('descripciones_frecuentes')
+        .insert({
+          texto: descripcion, categoria_id, orden: nextOrdenDesc(categoria_id),
+          user_id: userData.user.id
+        })
+        .select().single();
+      if (!error) descripcionesFrecuentes.push(data);
+    }
   }
 
   movModal.classList.add('hidden');
