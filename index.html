@@ -82,7 +82,7 @@
 
   .period-selector {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 16px 20px 0;
+    padding: 1px 20px 0;
   }
   .period-nav { display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; }
   .period-arrow {
@@ -143,7 +143,6 @@
   .view-toggle-group { display: flex; gap: 8px; margin-left: auto; }
   .resumen-icon { color: var(--accent); border-color: var(--accent); }
   .resumen-icon.active { background: var(--accent); color: #06101d; }
-  .ahorros-icon:not(.active) { color: var(--muted); border-color: var(--border); }
 
   .ahorros-block { padding: 0 20px; margin-bottom: 16px; }
   .ahorros-block .section-title { padding: 0; margin: 0 0 8px; }
@@ -310,9 +309,11 @@
 
   .header-actions { display: flex; align-items: center; gap: 14px; }
   /* Exportar: solo tiene sentido en desktop (pegar en Excel) — el celu nunca cumple este ancho */
-  .export-wrap { position: relative; display: none; }
+  .export-wrap, .import-btn { display: none; }
+  .export-wrap { position: relative; }
   @media (min-width: 700px) {
     .export-wrap { display: block; }
+    .import-btn { display: flex; }
   }
   .export-menu {
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; min-width: 210px;
@@ -349,11 +350,11 @@
   .icon-grid-full .icon-opt svg { width: 20px; height: 20px; }
 
   .cat-manage-list {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-    overflow-y: auto; -webkit-overflow-scrolling: touch; padding-right: 2px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+    overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-right: 2px;
   }
-  #catListIngreso { max-height: 148px; }
-  #catListEgreso { max-height: 148px; }
+  #catListIngreso { max-height: 96px; }
+  #catListEgreso { max-height: 200px; }
   .cat-card {
     background: var(--card-2); border-radius: var(--radius-md); padding: 4px 8px; height: 44px;
     display: flex; align-items: center; gap: 4px;
@@ -415,6 +416,30 @@
   .resumen-detail-item .d-monto.pos { color: var(--green); }
   .resumen-detail-item .d-monto.neg { color: var(--red); }
   .empty-cat-resumen { color: var(--muted); font-size: 13px; padding: 6px 0; }
+
+  .import-summary {
+    background: var(--card-2); border-radius: var(--radius-md); padding: 10px 14px;
+    font-size: var(--fs-meta); color: var(--muted); margin-bottom: 10px; line-height: 1.5;
+  }
+  .import-list { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+  .import-row {
+    display: flex; align-items: center; gap: 10px; background: var(--card-2);
+    border-radius: var(--radius-sm); padding: 8px 10px; font-size: var(--fs-meta);
+  }
+  .import-row.error { opacity: .55; }
+  .import-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+  .import-row .i-fecha { color: var(--muted); flex-shrink: 0; width: 62px; }
+  .import-row .i-mid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .import-row .i-monto { flex-shrink: 0; font-weight: 600; }
+  .import-row .i-monto.pos { color: var(--green); }
+  .import-row .i-monto.neg { color: var(--red); }
+  .import-tag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 5px;
+    border-radius: var(--radius-sm); margin-left: 4px; flex-shrink: 0;
+  }
+  .import-tag.nueva { background: rgba(78,168,255,.18); color: var(--accent); }
+  .import-tag.dup { background: rgba(255,91,91,.18); color: var(--red); }
+  .import-row .i-error { color: var(--red); flex: 1; }
 </style>
 </head>
 <body>
@@ -442,18 +467,31 @@
       <header>
         <div class="app-name">Mi Administración</div>
         <div class="header-actions">
+          <button type="button" class="icon-btn import-btn" id="importBtn" title="Importar movimientos desde CSV"><i data-lucide="upload"></i></button>
+          <input type="file" id="importFileInput" accept=".csv" class="hidden">
           <div class="export-wrap">
             <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar a CSV"><i data-lucide="download"></i></button>
             <div class="export-menu hidden" id="exportMenu">
               <button type="button" class="export-menu-item" data-tipo="movimientos">Movimientos</button>
               <button type="button" class="export-menu-item" data-tipo="resumen">Categorías</button>
               <button type="button" class="export-menu-item" data-tipo="ahorros">Ahorros</button>
+              <button type="button" class="export-menu-item" data-tipo="descfrecuentes">Descripciones</button>
             </div>
           </div>
           <button class="logout" id="openCatManage">Categorías</button>
           <button class="logout" id="logoutBtn">Salir</button>
         </div>
       </header>
+
+      <div class="search-row">
+        <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
+        <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
+        <div class="view-toggle-group">
+          <button type="button" id="openAhorros" class="icon-btn resumen-icon"><i data-lucide="dollar-sign"></i></button>
+          <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
+          <button type="button" id="openMovimientos" class="icon-btn resumen-icon active"><i data-lucide="list"></i></button>
+        </div>
+      </div>
 
       <div class="period-selector">
         <div class="period-nav">
@@ -479,15 +517,6 @@
         <div class="balance-sub">
           <div><div class="v" id="totalIngresos" style="color:var(--green)">$0</div><div class="l">Ingresos</div></div>
           <div><div class="v" id="totalEgresos" style="color:var(--red)">$0</div><div class="l">Gastos</div></div>
-        </div>
-      </div>
-
-      <div class="search-row">
-        <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
-        <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
-        <div class="view-toggle-group">
-          <button type="button" id="openAhorros" class="icon-btn resumen-icon ahorros-icon"><i data-lucide="piggy-bank"></i></button>
-          <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
         </div>
       </div>
     </div>
@@ -604,9 +633,10 @@
       <input type="text" id="retiroExtraDescripcion" placeholder="Descripción (opcional)">
     </div>
     <div class="error-msg" id="retiroExtraError"></div>
-    <div class="modal-actions">
-      <button class="btn-secondary" id="cancelRetiroExtra" style="flex:1;">Cancelar</button>
-      <button class="btn-primary" id="saveRetiroExtra" style="flex:1;">Guardar</button>
+    <div class="modal-actions-3">
+      <button class="btn-icon-danger hidden" id="deleteRetiroExtraBtn" title="Eliminar retiro extra"><i data-lucide="trash-2"></i></button>
+      <button class="btn-secondary" id="cancelRetiroExtra">Cancelar</button>
+      <button class="btn-primary" id="saveRetiroExtra">Guardar</button>
     </div>
   </div>
 </div>
@@ -617,16 +647,16 @@
     <h2>Categorías</h2>
 
     <div class="section-title-row">
-      <div class="section-title" style="padding:0; margin:0;">Ingreso</div>
-      <button type="button" class="add-cat-btn btn-add sm" data-tipo="ingreso">+</button>
-    </div>
-    <div id="catListIngreso" class="cat-manage-list"></div>
-
-    <div class="section-title-row" style="margin-top:14px;">
       <div class="section-title" style="padding:0; margin:0;">Gasto</div>
       <button type="button" class="add-cat-btn btn-add sm" data-tipo="egreso">+</button>
     </div>
     <div id="catListEgreso" class="cat-manage-list"></div>
+
+    <div class="section-title-row" style="margin-top:14px;">
+      <div class="section-title" style="padding:0; margin:0;">Ingreso</div>
+      <button type="button" class="add-cat-btn btn-add sm" data-tipo="ingreso">+</button>
+    </div>
+    <div id="catListIngreso" class="cat-manage-list"></div>
 
     <div class="error-msg" id="catManageError"></div>
 
@@ -665,6 +695,20 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="addDescBtn" style="flex:1;">Agregar</button>
       <button class="btn-secondary" id="closeDescManage" style="flex:1;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: previsualización de importación -->
+<div class="modal-overlay hidden" id="importModal">
+  <div class="modal">
+    <h2>Importar movimientos</h2>
+    <div class="import-summary" id="importSummary"></div>
+    <div class="import-list" id="importList"></div>
+    <div class="error-msg" id="importError"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="cancelImport" style="flex:1;">Cancelar</button>
+      <button class="btn-primary" id="confirmImport" style="flex:1;">Importar</button>
     </div>
   </div>
 </div>
@@ -753,8 +797,22 @@ function renderPeriodLabel() {
   document.getElementById('periodModeSelect').value = periodMode;
 }
 
+// La tarjeta de Saldo se ve siempre, en cualquier vista — pero solo loadMovimientos()
+// la actualiza (renderBalance). Cuando la vista activa es Categorías o Ahorros hay que
+// refrescarla aparte, si no queda desactualizada tras editar/borrar un movimiento.
+async function refreshBalance() {
+  const { start, end } = getPeriodRange();
+  const { data, error } = await sb.from('movimientos')
+    .select('monto, es_retiro, es_retiro_extra, categorias(tipo)')
+    .gte('fecha', start).lte('fecha', end);
+  if (error) { console.error(error); return; }
+  renderBalance(data || []);
+}
+
 function refreshCurrentView() {
-  if (inResumenView) loadResumen(); else loadMovimientos();
+  if (inResumenView) { refreshBalance(); return loadResumen(); }
+  if (inAhorrosView) { refreshBalance(); return loadAhorros(); }
+  return loadMovimientos();
 }
 
 document.getElementById('prevPeriod').addEventListener('click', () => {
@@ -987,6 +1045,13 @@ function csvEscape(value) {
   return /[;"\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
 }
 
+// Hora actual (HH_MM) para que cada export tenga un nombre de archivo único y no se
+// vayan acumulando "(1)", "(2)"... en la carpeta de Descargas al exportar varias veces.
+function horaFilenameSlug() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}_${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
 function periodoFilenameSlug() {
   if (periodMode === 'year') return `${periodYear}`;
   if (periodMode === 'day') return `${String(periodDay).padStart(2, '0')}-${String(periodMonth + 1).padStart(2, '0')}-${periodYear}`;
@@ -1026,13 +1091,14 @@ async function exportMovimientosCSV() {
     const tipo = m.categorias ? m.categorias.tipo : null;
     const signo = tipo === 'egreso' ? -1 : 1;
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR');
+    const tipoStr = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
     const montoStr = fmtCsvNumber(signo * Number(m.monto));
-    return [fecha, categoria, m.descripcion || '', montoStr];
+    return [fecha, tipoStr, categoria, m.descripcion || '', montoStr];
   });
 
-  descargarCSV(`movimientos_${periodoFilenameSlug()}.csv`,
-    ['Fecha', 'Categoría', 'Descripción', 'Monto'], filas);
+  descargarCSV(`movimientos_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
+    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'], filas);
 }
 
 async function exportResumenCSV() {
@@ -1056,7 +1122,7 @@ async function exportResumenCSV() {
     .sort((a, b) => b.total - a.total)
     .map(g => [g.cat.nombre, g.cat.tipo === 'ingreso' ? 'Ingreso' : 'Gasto', g.cantidad, fmtCsvNumber(g.total)]);
 
-  descargarCSV(`resumen_${periodoFilenameSlug()}.csv`,
+  descargarCSV(`resumen_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
     ['Categoría', 'Tipo', 'Cantidad de movimientos', 'Monto total'], filas);
 }
 
@@ -1092,8 +1158,26 @@ async function exportAhorrosCSV() {
       fmtCsvNumber(t.retiroExtra), fmtCsvNumber(total)];
   });
 
-  descargarCSV(`ahorros_${hoy}.csv`,
+  descargarCSV(`ahorros_${hoy}_${horaFilenameSlug()}.csv`,
     ['Apartado', 'Moneda', 'Ahorrado', 'Este mes', 'Retiro Extra', 'Total'], filas);
+}
+
+function exportDescFrecuentesCSV() {
+  // Usa las listas ya cargadas en memoria (categorias/descripcionesFrecuentes), que
+  // respetan el orden manual (▲▼) tal cual se ve en la pantalla "Categorías" — a
+  // propósito, no alfabético — para que sirva como maestro de referencia real.
+  const filas = [];
+  for (const tipo of ['egreso', 'ingreso']) {
+    const tipoLabel = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
+    for (const cat of categorias.filter(c => c.tipo === tipo)) {
+      const descs = descripcionesFrecuentes.filter(d => d.categoria_id === cat.id);
+      if (!descs.length) { filas.push([tipoLabel, cat.nombre, '']); continue; }
+      for (const d of descs) filas.push([tipoLabel, cat.nombre, d.texto]);
+    }
+  }
+
+  const hoy = new Date().toISOString().slice(0, 10).split('-').reverse().join('-');
+  descargarCSV(`descripciones_${hoy}_${horaFilenameSlug()}.csv`, ['Tipo', 'Categoría', 'Descripción'], filas);
 }
 
 const exportMenu = document.getElementById('exportMenu');
@@ -1113,6 +1197,7 @@ exportMenu.addEventListener('click', (e) => {
   if (item.dataset.tipo === 'movimientos') exportMovimientosCSV();
   else if (item.dataset.tipo === 'resumen') exportResumenCSV();
   else if (item.dataset.tipo === 'ahorros') exportAhorrosCSV();
+  else if (item.dataset.tipo === 'descfrecuentes') exportDescFrecuentesCSV();
 });
 
 let amountsHidden = true; // arranca siempre oculto, no se recuerda entre sesiones
@@ -1263,6 +1348,7 @@ function openModal(tipo) {
   editingMovId = null;
   selectedCategoriaId = null;
   modalTitle.textContent = tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto';
+  document.getElementById('cancelMov').textContent = 'Cancelar';
   montoStr = '0';
   montoUsdStr = '0';
   activeAmountTarget = 'main';
@@ -1287,6 +1373,7 @@ function openEditMovModal(mov) {
   editingMovId = mov.id;
   selectedCategoriaId = mov.categoria_id;
   modalTitle.textContent = currentTipo === 'ingreso' ? 'Editar ingreso' : 'Editar gasto';
+  document.getElementById('cancelMov').textContent = (inResumenView || inAhorrosView) ? 'Atrás' : 'Cancelar';
   montoStr = String(mov.monto).replace('.', ',');
   montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
   activeAmountTarget = 'main';
@@ -1448,7 +1535,7 @@ async function guardarMovimiento(categoria_id) {
   }
 
   movModal.classList.add('hidden');
-  await loadMovimientos();
+  await refreshCurrentView();
 }
 
 deleteMovBtn.addEventListener('click', async () => {
@@ -1457,7 +1544,7 @@ deleteMovBtn.addEventListener('click', async () => {
   const { error } = await sb.from('movimientos').delete().eq('id', editingMovId);
   if (error) { movError.textContent = error.message; return; }
   movModal.classList.add('hidden');
-  await loadMovimientos();
+  await refreshCurrentView();
 });
 
 // ---------- Modal: gestionar categorías ----------
@@ -1745,6 +1832,7 @@ const resumenView = document.getElementById('resumenView');
 const ahorrosView = document.getElementById('ahorrosView');
 const openResumenBtn = document.getElementById('openResumen');
 const openAhorrosBtn = document.getElementById('openAhorros');
+const openMovimientosBtn = document.getElementById('openMovimientos');
 let inResumenView = false;
 let inAhorrosView = false;
 let resumenMovsById = {}; // para poder editar un movimiento tocado desde el detalle desplegado
@@ -1757,6 +1845,7 @@ function showMovView() {
   inAhorrosView = false;
   openResumenBtn.classList.remove('active');
   openAhorrosBtn.classList.remove('active');
+  openMovimientosBtn.classList.add('active');
   document.getElementById('searchToggle').classList.remove('hidden');
 }
 
@@ -1777,6 +1866,7 @@ async function showResumenView() {
   inAhorrosView = false;
   openResumenBtn.classList.add('active');
   openAhorrosBtn.classList.remove('active');
+  openMovimientosBtn.classList.remove('active');
   // el buscador solo aplica a Movimientos, nunca al resumen por categoría ni a Ahorros
   hideSearchForOtherView();
 }
@@ -1790,6 +1880,7 @@ async function showAhorrosView() {
   inResumenView = false;
   openAhorrosBtn.classList.add('active');
   openResumenBtn.classList.remove('active');
+  openMovimientosBtn.classList.remove('active');
   hideSearchForOtherView();
 }
 
@@ -1800,6 +1891,8 @@ openResumenBtn.addEventListener('click', () => {
 openAhorrosBtn.addEventListener('click', () => {
   if (inAhorrosView) showMovView(); else showAhorrosView();
 });
+
+openMovimientosBtn.addEventListener('click', showMovView);
 
 function startOfCurrentMonth() {
   const now = new Date();
@@ -1915,26 +2008,46 @@ document.getElementById('ahorrosContent').addEventListener('click', (e) => {
   const item = e.target.closest('.ahorros-extra-item');
   if (item) {
     const mov = ahorrosMovsById[item.dataset.id];
-    if (mov) openEditMovModal(mov);
+    // Un Retiro Extra se edita con su propio modal chico (solo monto/descripción),
+    // no con el modal genérico — ahí se podría cambiar la categoría o destildar
+    // "Retiro" y romper la distinción entre Retiro y Retiro Extra.
+    if (mov) openRetiroExtraModal(null, mov);
   }
 });
 
 // ---------- Modal: Retiro Extra (compras/pagos grandes que impactan el acumulado) ----------
 const retiroExtraModal = document.getElementById('retiroExtraModal');
 const retiroExtraError = document.getElementById('retiroExtraError');
+const deleteRetiroExtraBtn = document.getElementById('deleteRetiroExtraBtn');
 let retiroExtraLabel = null;
+let editingRetiroExtraMov = null; // movimiento en edición, null = alta nueva
 
-function openRetiroExtraModal(label) {
-  retiroExtraLabel = label;
-  document.getElementById('retiroExtraTitle').textContent = `Retiro Extra — ${label}`;
-  document.getElementById('retiroExtraMonto').value = '';
-  document.getElementById('retiroExtraDescripcion').value = '';
+function openRetiroExtraModal(label, mov) {
+  editingRetiroExtraMov = mov || null;
+  retiroExtraLabel = mov ? apartadoDe(mov.descripcion).label : label;
+  document.getElementById('retiroExtraTitle').textContent =
+    (mov ? 'Editar Retiro Extra — ' : 'Retiro Extra — ') + retiroExtraLabel;
+  document.getElementById('retiroExtraMonto').value = mov ? formatMontoDisplay(String(mov.monto).replace('.', ',')) : '';
+  // Al editar, solo se muestra/edita el texto libre que sigue al apartado (ej. "cocina"
+  // en "FCI Pesos - cocina") — el apartado en sí no se toca desde acá.
+  const textoLibre = mov ? mov.descripcion.slice(retiroExtraLabel.length).replace(/^\s*-\s*/, '') : '';
+  document.getElementById('retiroExtraDescripcion').value = textoLibre;
+  deleteRetiroExtraBtn.classList.toggle('hidden', !mov);
   retiroExtraError.textContent = '';
   retiroExtraModal.classList.remove('hidden');
 }
 
 document.getElementById('cancelRetiroExtra').addEventListener('click', () => {
   retiroExtraModal.classList.add('hidden');
+});
+
+deleteRetiroExtraBtn.addEventListener('click', async () => {
+  if (!editingRetiroExtraMov) return;
+  if (!confirm('¿Eliminar este retiro extra?')) return;
+  const { error } = await sb.from('movimientos').delete().eq('id', editingRetiroExtraMov.id);
+  if (error) { retiroExtraError.textContent = error.message; return; }
+  retiroExtraModal.classList.add('hidden');
+  await loadAhorros();
 });
 
 // Formatea con separador de miles mientras se tipea, conservando la posición del cursor.
@@ -1955,23 +2068,292 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
   const monto = parseFloat(document.getElementById('retiroExtraMonto').value.replace(/\./g, '').replace(',', '.'));
   if (!monto || monto <= 0) { retiroExtraError.textContent = 'Ingresá un monto válido'; return; }
 
-  const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
-  if (!cat) { retiroExtraError.textContent = 'No se encontró la categoría AHORROS'; return; }
-
   const textoExtra = document.getElementById('retiroExtraDescripcion').value.trim();
   const descripcion = retiroExtraLabel + (textoExtra ? ' - ' + textoExtra : '');
 
-  if (!confirm(`¿Confirmás el retiro extra de ${fmt(monto)} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
-
-  const { data: userData } = await sb.auth.getUser();
-  const { error } = await sb.from('movimientos').insert({
-    monto, categoria_id: cat.id, fecha: new Date().toISOString().slice(0, 10),
-    descripcion, es_retiro: true, es_retiro_extra: true, user_id: userData.user.id
-  });
-  if (error) { retiroExtraError.textContent = error.message; return; }
+  if (editingRetiroExtraMov) {
+    if (!confirm(`¿Guardar los cambios de este retiro extra (${fmt(monto)})?`)) return;
+    const { error } = await sb.from('movimientos')
+      .update({ monto, descripcion })
+      .eq('id', editingRetiroExtraMov.id);
+    if (error) { retiroExtraError.textContent = error.message; return; }
+  } else {
+    const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
+    if (!cat) { retiroExtraError.textContent = 'No se encontró la categoría AHORROS'; return; }
+    if (!confirm(`¿Confirmás el retiro extra de ${fmt(monto)} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
+    const { data: userData } = await sb.auth.getUser();
+    const { error } = await sb.from('movimientos').insert({
+      monto, categoria_id: cat.id, fecha: new Date().toISOString().slice(0, 10),
+      descripcion, es_retiro: true, es_retiro_extra: true, user_id: userData.user.id
+    });
+    if (error) { retiroExtraError.textContent = error.message; return; }
+  }
 
   retiroExtraModal.classList.add('hidden');
   await loadAhorros();
+});
+
+// ---------- Importar movimientos desde CSV (mismo formato que "Exportar > Movimientos") ----------
+const IMPORT_HEADER = ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'];
+let importRows = [];
+
+// Parser CSV chico: separador ";", campos entre comillas (con "" como comilla escapada),
+// mismo formato que arma csvEscape() al exportar.
+function parseCsvText(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ';') { row.push(field); field = ''; }
+    else if (c === '\r') { /* ignorado, el corte de línea real es \n */ }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0].trim() === ''));
+}
+
+function parseCsvFecha(str) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((str || '').trim());
+  if (!m) return null;
+  const day = Number(m[1]), month = Number(m[2]), year = Number(m[3]);
+  const dt = new Date(year, month - 1, day);
+  if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseCsvMonto(str) {
+  const s = (str || '').trim().replace(/\./g, '').replace(',', '.');
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+  return Number(s);
+}
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  document.getElementById('importFileInput').value = '';
+  document.getElementById('importFileInput').click();
+});
+
+document.getElementById('importFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => processImportFile(reader.result);
+  reader.readAsText(file, 'UTF-8');
+});
+
+function processImportFile(text) {
+  // Un byte inválido en UTF-8 se decodifica como el carácter de reemplazo — si aparece,
+  // el archivo no estaba realmente en UTF-8 (típico de guardar como "CSV" a secas).
+  if (text.includes('�')) {
+    alert('El archivo no está en UTF-8. Volvé a guardarlo desde Excel eligiendo "CSV UTF-8 (delimitado por comas)".');
+    return;
+  }
+  const rows = parseCsvText(text);
+  if (!rows.length) { alert('El archivo está vacío.'); return; }
+
+  const header = rows[0].map(h => h.trim());
+  const headerOk = header.length === IMPORT_HEADER.length && header.every((h, i) => h === IMPORT_HEADER[i]);
+  if (!headerOk) {
+    alert('Este archivo no tiene el formato esperado (Fecha;Tipo;Categoría;Descripción;Monto). Exportá "Movimientos" desde esta misma app para tener la estructura correcta.');
+    return;
+  }
+
+  buildImportPreview(rows.slice(1));
+}
+
+async function buildImportPreview(dataRows) {
+  const parsed = dataRows
+    .filter(r => r.some(c => c.trim() !== ''))
+    .map(r => {
+      const [fechaRaw, tipoRaw, categoriaRaw, descripcionRaw, montoRaw] = r;
+      const row = {
+        fechaRaw: (fechaRaw || '').trim(),
+        categoriaNombre: (categoriaRaw || '').trim(), // trim: evita categorías/descripciones
+        descripcion: (descripcionRaw || '').trim(),   // "duplicadas" por un espacio de más del Excel
+        error: null,
+      };
+      row.fechaIso = parseCsvFecha(row.fechaRaw);
+      if (!row.fechaIso) row.error = 'Fecha inválida';
+
+      if (!row.error) {
+        const tipoNorm = (tipoRaw || '').trim().toLowerCase();
+        if (tipoNorm === 'ingreso') row.tipo = 'ingreso';
+        else if (tipoNorm === 'gasto') row.tipo = 'egreso';
+        else row.error = 'Tipo inválido (debe ser Ingreso o Gasto)';
+      }
+      if (!row.error && !row.categoriaNombre) row.error = 'Falta la categoría';
+
+      // El signo del monto no importa acá: quién manda es la columna Tipo. Así el
+      // usuario puede tipear todo en positivo al armar el Excel a mano, sin acordarse
+      // de poner el "-" en cada gasto.
+      const monto = parseCsvMonto(montoRaw);
+      if (!row.error && (monto === null || monto === 0)) row.error = 'Monto inválido';
+      row.montoAbs = monto !== null ? Math.abs(monto) : null;
+      return row;
+    });
+
+  for (const row of parsed) {
+    if (row.error) continue;
+    const catMatch = categorias.find(c => c.tipo === row.tipo && c.nombre.toLowerCase() === row.categoriaNombre.toLowerCase());
+    row.categoriaId = catMatch ? catMatch.id : null;
+    row.categoriaIsNew = !catMatch;
+    const descMatch = row.categoriaId
+      ? descripcionesFrecuentes.find(d => d.categoria_id === row.categoriaId && d.texto.toLowerCase() === row.descripcion.toLowerCase())
+      : null;
+    row.descripcionIsNew = row.descripcion !== '' && !descMatch;
+  }
+
+  // Duplicados: se compara contra los movimientos ya cargados en el rango de fechas del archivo.
+  const fechasValidas = parsed.filter(r => r.fechaIso).map(r => r.fechaIso);
+  let existentesKeys = new Set();
+  if (fechasValidas.length) {
+    const min = fechasValidas.reduce((a, b) => a < b ? a : b);
+    const max = fechasValidas.reduce((a, b) => a > b ? a : b);
+    const { data, error } = await sb.from('movimientos')
+      .select('fecha, monto, categorias(nombre, tipo), descripcion')
+      .gte('fecha', min).lte('fecha', max);
+    if (!error) {
+      existentesKeys = new Set((data || []).filter(m => m.categorias).map(m =>
+        `${m.fecha}|${m.categorias.tipo}|${m.categorias.nombre.toLowerCase()}|${(m.descripcion || '').toLowerCase()}|${Number(m.monto)}`));
+    }
+  }
+  for (const row of parsed) {
+    if (row.error) continue;
+    const key = `${row.fechaIso}|${row.tipo}|${row.categoriaNombre.toLowerCase()}|${row.descripcion.toLowerCase()}|${row.montoAbs}`;
+    row.isDup = existentesKeys.has(key);
+    existentesKeys.add(key); // así una fila repetida DENTRO del mismo archivo también se marca (la 1ª ocurrencia queda limpia, las siguientes iguales quedan como duplicado)
+  }
+
+  importRows = parsed;
+  renderImportPreview();
+  document.getElementById('importError').textContent = '';
+  document.getElementById('importModal').classList.remove('hidden');
+}
+
+function renderImportPreview() {
+  const list = document.getElementById('importList');
+  list.innerHTML = importRows.map((row, i) => {
+    if (row.error) {
+      return `<div class="import-row error">
+        <input type="checkbox" disabled>
+        <div class="i-fecha">${row.fechaRaw || '-'}</div>
+        <div class="i-error">${row.error}</div>
+      </div>`;
+    }
+    const catTag = row.categoriaIsNew ? '<span class="import-tag nueva">nueva</span>' : '';
+    const descTag = row.descripcionIsNew ? '<span class="import-tag nueva">nueva</span>' : '';
+    const dupTag = row.isDup ? '<span class="import-tag dup">posible duplicado</span>' : '';
+    const cls = row.tipo === 'ingreso' ? 'pos' : 'neg';
+    const fechaFmt = new Date(row.fechaIso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    return `<div class="import-row">
+      <input type="checkbox" class="import-check" data-idx="${i}" ${row.isDup ? '' : 'checked'}>
+      <div class="i-fecha">${fechaFmt}</div>
+      <div class="i-mid">${row.categoriaNombre}${catTag} · ${row.descripcion || '(sin descripción)'}${descTag}${dupTag}</div>
+      <div class="i-monto ${cls}">${fmt(row.montoAbs)}</div>
+    </div>`;
+  }).join('');
+  updateImportSummary();
+}
+
+function updateImportSummary() {
+  const checks = document.querySelectorAll('.import-check');
+  let count = 0, dups = 0;
+  const catsNuevas = new Set(), descsNuevas = new Set();
+  const errores = importRows.filter(r => r.error).length;
+  checks.forEach(chk => {
+    const row = importRows[Number(chk.dataset.idx)];
+    if (row.isDup) dups++;
+    if (!chk.checked) return;
+    count++;
+    if (row.categoriaIsNew) catsNuevas.add(row.tipo + '|' + row.categoriaNombre.toLowerCase());
+    if (row.descripcionIsNew) descsNuevas.add(row.tipo + '|' + row.categoriaNombre.toLowerCase() + '|' + row.descripcion.toLowerCase());
+  });
+  document.getElementById('importSummary').textContent =
+    `${count} movimiento${count === 1 ? '' : 's'} a importar · ${catsNuevas.size} categoría${catsNuevas.size === 1 ? '' : 's'} nueva${catsNuevas.size === 1 ? '' : 's'} · `
+    + `${descsNuevas.size} descripción${descsNuevas.size === 1 ? '' : 'es'} nueva${descsNuevas.size === 1 ? '' : 's'}`
+    + (dups ? ` · ${dups} posible${dups === 1 ? '' : 's'} duplicado${dups === 1 ? '' : 's'}` : '')
+    + (errores ? ` · ${errores} fila${errores === 1 ? '' : 's'} con error (excluida${errores === 1 ? '' : 's'})` : '');
+  document.getElementById('confirmImport').disabled = count === 0;
+}
+
+document.getElementById('importList').addEventListener('change', (e) => {
+  if (e.target.classList.contains('import-check')) updateImportSummary();
+});
+
+document.getElementById('cancelImport').addEventListener('click', () => {
+  document.getElementById('importModal').classList.add('hidden');
+});
+
+document.getElementById('confirmImport').addEventListener('click', async () => {
+  const importError = document.getElementById('importError');
+  importError.textContent = '';
+  const btn = document.getElementById('confirmImport');
+  btn.disabled = true;
+
+  const seleccionadas = [];
+  document.querySelectorAll('.import-check').forEach(chk => {
+    if (chk.checked) seleccionadas.push(importRows[Number(chk.dataset.idx)]);
+  });
+  if (!seleccionadas.length) { btn.disabled = false; return; }
+
+  const { data: userData } = await sb.auth.getUser();
+  const userId = userData.user.id;
+
+  // 1) categorías nuevas (una por combinación tipo+nombre, para no duplicar si varias filas la comparten)
+  const catsACrear = new Map();
+  for (const row of seleccionadas) {
+    if (row.categoriaIsNew) {
+      const key = row.tipo + '|' + row.categoriaNombre.toLowerCase();
+      if (!catsACrear.has(key)) catsACrear.set(key, { tipo: row.tipo, nombre: row.categoriaNombre });
+    }
+  }
+  for (const c of catsACrear.values()) {
+    const color = nextAvailableColor(c.tipo);
+    const { data, error } = await sb.from('categorias')
+      .insert({ nombre: c.nombre, tipo: c.tipo, color, user_id: userId })
+      .select().single();
+    if (error) { importError.textContent = error.message; btn.disabled = false; return; }
+    categorias.push(data); // necesario ya acá para que nextAvailableColor no repita color en la próxima vuelta
+    for (const row of seleccionadas) {
+      if (row.categoriaIsNew && row.tipo === c.tipo && row.categoriaNombre.toLowerCase() === c.nombre.toLowerCase()) {
+        row.categoriaId = data.id;
+      }
+    }
+  }
+
+  // 2) descripciones frecuentes nuevas
+  const descsACrear = new Map();
+  for (const row of seleccionadas) {
+    if (row.descripcionIsNew && row.descripcion) {
+      const key = row.categoriaId + '|' + row.descripcion.toLowerCase();
+      if (!descsACrear.has(key)) descsACrear.set(key, { categoria_id: row.categoriaId, texto: row.descripcion });
+    }
+  }
+  for (const d of descsACrear.values()) {
+    const { data, error } = await sb.from('descripciones_frecuentes')
+      .insert({ categoria_id: d.categoria_id, texto: d.texto, user_id: userId })
+      .select().single();
+    if (!error && data) descripcionesFrecuentes.push(data);
+  }
+
+  // 3) movimientos
+  const movsAInsertar = seleccionadas.map(row => ({
+    monto: row.montoAbs, categoria_id: row.categoriaId, fecha: row.fechaIso,
+    descripcion: row.descripcion || null, es_retiro: false, es_retiro_extra: false,
+    monto_usd: null, user_id: userId,
+  }));
+  const { error: insError } = await sb.from('movimientos').insert(movsAInsertar);
+  if (insError) { importError.textContent = insError.message; btn.disabled = false; return; }
+
+  document.getElementById('importModal').classList.add('hidden');
+  btn.disabled = false;
+  renderCategoriaOptions();
+  await refreshCurrentView();
+  alert(`Se importaron ${movsAInsertar.length} movimiento(s), ${catsACrear.size} categoría(s) nueva(s) y ${descsACrear.size} descripción(es) nueva(s).`);
 });
 
 async function loadResumen() {
@@ -2054,7 +2436,6 @@ resumenView.addEventListener('click', (e) => {
   if (!item) return;
   const mov = resumenMovsById[item.dataset.id];
   if (!mov) return;
-  showMovView();
   openEditMovModal(mov);
 });
 </script>
