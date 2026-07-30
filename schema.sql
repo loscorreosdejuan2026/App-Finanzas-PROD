@@ -27,6 +27,9 @@ create table movimientos (
   categoria_id uuid references categorias(id) on delete set null,
   monto numeric not null check (monto > 0),
   descripcion text,
+  es_retiro boolean not null default false,
+  es_retiro_extra boolean not null default false,
+  monto_usd numeric,
   created_at timestamptz not null default now()
 );
 
@@ -95,3 +98,22 @@ create policy "descripciones_frecuentes: update propias" on descripciones_frecue
   for update using (auth.uid() = user_id);
 create policy "descripciones_frecuentes: delete propias" on descripciones_frecuentes
   for delete using (auth.uid() = user_id);
+
+-- 28/07/2026 — marca de "retiro" en movimientos de la categoría AHORROS (Gasto).
+-- Sin categoría nueva para retiros: un aporte y un retiro de ahorro son los dos
+-- Gasto > AHORROS, y este flag distingue si ese monto se debe sumar o restar del
+-- acumulado en la vista "Mis Ahorros". No aplica a ninguna otra categoría.
+alter table movimientos add column if not exists es_retiro boolean not null default false;
+
+-- 28/07/2026 — marca de "retiro extra" (compras/pagos grandes que impactan de lleno
+-- en el acumulado histórico de AHORROS, ej. remodelación) separada de un "retiro"
+-- chico de ajuste mensual. Solo tiene sentido junto con es_retiro = true. Se excluye
+-- del Balance/Resumen general (a diferencia de un retiro normal, que sí resta ahí) —
+-- solo se ve en la vista "Mis Ahorros".
+alter table movimientos add column if not exists es_retiro_extra boolean not null default false;
+
+-- 29/07/2026 — monto en U$D real para movimientos de AHORROS en esa moneda. "monto"
+-- sigue siendo siempre en pesos (lo único que toca el Balance general); monto_usd
+-- guarda cuántos dólares se compraron/retiraron realmente (difieren por el tipo de
+-- cambio) y es lo que usa la vista "Mis Ahorros" para el total en esa moneda.
+alter table movimientos add column if not exists monto_usd numeric;

@@ -140,8 +140,32 @@
     display: flex; align-items: center; justify-content: center;
   }
   .icon-btn svg { width: 18px; height: 18px; }
-  .resumen-icon { color: var(--accent); border-color: var(--accent); margin-left: auto; }
+  .view-toggle-group { display: flex; gap: 8px; margin-left: auto; }
+  .resumen-icon { color: var(--accent); border-color: var(--accent); }
   .resumen-icon.active { background: var(--accent); color: #06101d; }
+  .ahorros-icon:not(.active) { color: var(--muted); border-color: var(--border); }
+
+  .ahorros-block { padding: 0 20px; margin-bottom: 16px; }
+  .ahorros-block .section-title { padding: 0; margin: 0 0 8px; }
+  .ahorros-rows { background: var(--card-2); border-radius: var(--radius-md); overflow: hidden; }
+  .ahorros-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px; font-size: var(--fs-body); border-bottom: 1px solid var(--border);
+  }
+  .ahorros-row:last-child { border-bottom: none; }
+  .ahorros-row .l { color: var(--muted); }
+  .ahorros-row.total .l, .ahorros-row.total .v { font-weight: 700; }
+  .empty-ahorros { padding: 0 20px; color: var(--muted); font-size: var(--fs-meta); }
+  .btn-secondary.sm { padding: 6px 10px; font-size: var(--fs-meta); border-radius: var(--radius-sm); }
+  .ahorros-extra-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .ahorros-extra-item {
+    display: flex; align-items: center; gap: 10px; background: var(--card-2);
+    border-radius: var(--radius-sm); border: none; padding: 9px 12px; width: 100%;
+    color: var(--text); text-align: left; font-size: var(--fs-meta);
+  }
+  .ahorros-extra-item .d-fecha { color: var(--muted); flex-shrink: 0; }
+  .ahorros-extra-item .d-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ahorros-extra-item .d-monto.neg { color: var(--red); font-weight: 600; }
   .search-row input {
     flex: 1; width: auto; padding: 8px 14px; font-size: 14px; border-radius: var(--radius-md);
   }
@@ -208,7 +232,15 @@
   .modal-actions button { flex: 1; padding: 11px; }
 
   .desc-input-row { display: flex; align-items: center; gap: 8px; }
-  .desc-input-row input[type="text"] { flex: 1; }
+  .desc-input-row input[type="text"] { flex: 0 0 50%; min-width: 0; }
+  .desc-input-row input#movDescripcion.with-usd-field { flex-basis: 25%; }
+  .monto-usd-display {
+    flex: 0 0 60px; min-width: 0; text-align: center; padding: 10px 4px;
+    background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: var(--fs-label); font-weight: 700; color: var(--text);
+  }
+  .monto-usd-display.active { border-color: var(--accent); color: var(--accent); }
+  .checks-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 12px; flex: 1; }
   .check-row-inline {
     display: flex; align-items: center; gap: 5px; flex-shrink: 0; cursor: pointer;
     font-size: var(--fs-meta); color: var(--muted); white-space: nowrap;
@@ -251,6 +283,7 @@
   }
   .amount-display-sm.pos { color: var(--green); }
   .amount-display-sm.neg { color: var(--red); }
+  .amount-display-sm.active-target { border-color: var(--accent); }
   .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 32px; }
   .keypad .key {
     padding: 11px 0; background: var(--card-2); color: var(--text); border: 1px solid var(--border);
@@ -277,10 +310,21 @@
 
   .header-actions { display: flex; align-items: center; gap: 14px; }
   /* Exportar: solo tiene sentido en desktop (pegar en Excel) — el celu nunca cumple este ancho */
-  .export-btn { display: none; }
+  .export-wrap { position: relative; display: none; }
   @media (min-width: 700px) {
-    .export-btn { display: flex; }
+    .export-wrap { display: block; }
   }
+  .export-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; min-width: 210px;
+    background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .export-menu-item {
+    text-align: left; padding: 9px 10px; border-radius: var(--radius-sm); background: none; border: none;
+    color: var(--text); font-size: var(--fs-label);
+  }
+  .export-menu-item:hover { background: var(--card); }
 
   .icon-opt {
     background: var(--card-2); border: 2px solid transparent; border-radius: var(--radius-sm);
@@ -398,7 +442,14 @@
       <header>
         <div class="app-name">Mi Administración</div>
         <div class="header-actions">
-          <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar período actual a CSV"><i data-lucide="download"></i></button>
+          <div class="export-wrap">
+            <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar a CSV"><i data-lucide="download"></i></button>
+            <div class="export-menu hidden" id="exportMenu">
+              <button type="button" class="export-menu-item" data-tipo="movimientos">Movimientos</button>
+              <button type="button" class="export-menu-item" data-tipo="resumen">Categorías</button>
+              <button type="button" class="export-menu-item" data-tipo="ahorros">Ahorros</button>
+            </div>
+          </div>
           <button class="logout" id="openCatManage">Categorías</button>
           <button class="logout" id="logoutBtn">Salir</button>
         </div>
@@ -422,7 +473,7 @@
         <button class="btn-add" id="openIngreso">+</button>
         <div class="label-row">
           <div class="label">Saldo</div>
-          <button type="button" id="toggleAmounts" class="eye-btn"><i data-lucide="eye"></i></button>
+          <button type="button" id="toggleAmounts" class="eye-btn"><i data-lucide="eye-off"></i></button>
         </div>
         <div class="amount" id="balanceAmount">$0</div>
         <div class="balance-sub">
@@ -434,7 +485,10 @@
       <div class="search-row">
         <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
         <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
-        <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
+        <div class="view-toggle-group">
+          <button type="button" id="openAhorros" class="icon-btn resumen-icon ahorros-icon"><i data-lucide="piggy-bank"></i></button>
+          <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
+        </div>
       </div>
     </div>
 
@@ -448,6 +502,9 @@
         <div id="resumenIngresoList" class="resumen-list"></div>
         <div class="section-title" style="margin-top: 14px;">Gasto</div>
         <div id="resumenGastoList" class="resumen-list"></div>
+      </div>
+      <div id="ahorrosView" class="hidden">
+        <div id="ahorrosContent"></div>
       </div>
     </div>
   </div>
@@ -477,10 +534,17 @@
       <div class="field">
         <div class="desc-input-row">
           <input type="text" id="movDescripcion" placeholder="Descripción">
-          <label class="check-row-inline" for="saveAsFreqDesc" title="Guardar como descripción frecuente">
-            <input type="checkbox" id="saveAsFreqDesc">
-            <span>Frecuente</span>
-          </label>
+          <button type="button" id="movMontoUsd" class="monto-usd-display hidden">0</button>
+          <div class="checks-row">
+            <label class="check-row-inline hidden" id="retiroAhorroRow" for="esRetiroAhorro">
+              <input type="checkbox" id="esRetiroAhorro">
+              <span>Retiro</span>
+            </label>
+            <label class="check-row-inline" for="saveAsFreqDesc" title="Guardar como descripción frecuente">
+              <input type="checkbox" id="saveAsFreqDesc">
+              <span>Frecuente</span>
+            </label>
+          </div>
         </div>
         <div class="desc-suggest-row" id="descSuggestRow"></div>
       </div>
@@ -525,6 +589,24 @@
       <div class="error-msg" id="catStepError" style="min-height: 0;"></div>
 
       <button type="button" class="icon-btn" id="backToMonto" title="Atrás"><i data-lucide="arrow-left"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: retiro extra de ahorro -->
+<div class="modal-overlay hidden" id="retiroExtraModal">
+  <div class="modal">
+    <h2 id="retiroExtraTitle">Retiro Extra</h2>
+    <div class="field">
+      <input type="text" id="retiroExtraMonto" inputmode="decimal" placeholder="Monto">
+    </div>
+    <div class="field">
+      <input type="text" id="retiroExtraDescripcion" placeholder="Descripción (opcional)">
+    </div>
+    <div class="error-msg" id="retiroExtraError"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="cancelRetiroExtra" style="flex:1;">Cancelar</button>
+      <button class="btn-primary" id="saveRetiroExtra" style="flex:1;">Guardar</button>
     </div>
   </div>
 </div>
@@ -599,6 +681,8 @@ let categorias = [];
 let descripcionesFrecuentes = [];
 let descManageCategoriaId = null; // categoría cuyas descripciones precargadas se están gestionando en el modal dedicado
 let montoStr = '0'; // monto que se va tipeando en el teclado numérico
+let montoUsdStr = '0'; // monto en U$D (AHORROS), se tipea con el mismo teclado
+let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' — a cuál de los dos escribe el teclado
 let currentMovs = []; // últimos movimientos cargados (para abrir edición sin re-consultar)
 let editingMovId = null; // id del movimiento en edición (null = alta nueva)
 let selectedCategoriaId = null; // categoría elegida para el movimiento que se está cargando/editando (Paso 2)
@@ -785,9 +869,39 @@ function renderCategoriaOptions() {
   if (window.lucide) lucide.createIcons();
 }
 
+// El monto principal (teclado) siempre queda en pesos y es lo que resta del Balance;
+// cuando el ahorro es en U$D, este campo aparte guarda cuántos dólares se compraron
+// realmente, ya que el tipo de cambio hace que ambos números no coincidan.
+function isAhorroUsd() {
+  const cat = categorias.find(c => c.id === selectedCategoriaId);
+  const esAhorros = !!cat && cat.nombre === 'AHORROS' && cat.tipo === 'egreso';
+  const desc = document.getElementById('movDescripcion').value;
+  return esAhorros && claseMoneda(desc) === 'usd';
+}
+
+function updateMontoUsdVisibility() {
+  const btn = document.getElementById('movMontoUsd');
+  const show = isAhorroUsd();
+  const wasHidden = btn.classList.contains('hidden');
+  btn.classList.toggle('hidden', !show);
+  document.getElementById('movDescripcion').classList.toggle('with-usd-field', show);
+  if (!show) {
+    montoUsdStr = '0';
+    if (activeAmountTarget === 'usd') activeAmountTarget = 'main';
+  } else if (wasHidden) {
+    activeAmountTarget = 'usd'; // recién aparece: el teclado salta directo a cargar los U$D
+  }
+  renderAmountDisplay();
+}
+
 function updateCatSelectDisplay() {
   const btn = document.getElementById('openCatStep');
   const cat = categorias.find(c => c.id === selectedCategoriaId);
+  const retiroRow = document.getElementById('retiroAhorroRow');
+  const esAhorros = !!cat && cat.nombre === 'AHORROS' && cat.tipo === 'egreso';
+  retiroRow.classList.toggle('hidden', !esAhorros);
+  if (!esAhorros) document.getElementById('esRetiroAhorro').checked = false;
+  updateMontoUsdVisibility();
   if (!cat) {
     btn.classList.add('placeholder');
     btn.innerHTML = `<span class="cat-select-label" id="catSelectLabel">Elegir categoría</span>`;
@@ -835,6 +949,18 @@ document.getElementById('descSuggestRow').addEventListener('click', (e) => {
   const chip = e.target.closest('.desc-suggest-chip');
   if (!chip) return;
   document.getElementById('movDescripcion').value = chip.dataset.texto;
+  updateMontoUsdVisibility();
+});
+
+document.getElementById('movDescripcion').addEventListener('input', updateMontoUsdVisibility);
+
+document.getElementById('movMontoUsd').addEventListener('click', () => {
+  activeAmountTarget = 'usd';
+  renderAmountDisplay();
+});
+document.getElementById('amountDisplay').addEventListener('click', () => {
+  activeAmountTarget = 'main';
+  renderAmountDisplay();
 });
 
 async function loadMovimientos() {
@@ -849,7 +975,9 @@ async function loadMovimientos() {
   if (error) { console.error(error); return; }
   currentMovs = data || [];
   document.getElementById('movListTitle').textContent = 'Movimientos';
-  renderMovimientos(currentMovs);
+  // Un Retiro Extra es plata que sale del pozo de Ahorros, no del pozo de la
+  // diaria — se ve y se edita desde la vista Ahorros, no acá.
+  renderMovimientos(currentMovs.filter(m => !m.es_retiro_extra));
   renderBalance(currentMovs);
 }
 
@@ -865,7 +993,26 @@ function periodoFilenameSlug() {
   return `${MESES[periodMonth].toLowerCase()}-${periodYear}`;
 }
 
-async function exportCSV() {
+// Mismo formato que fmt() pero sin el "$" — separador de miles y sin decimales,
+// legible directo por Excel es-AR (punto de miles, coma decimal) para sumar en una tabla dinámica.
+function fmtCsvNumber(n) {
+  return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function descargarCSV(filename, header, filas) {
+  const BOM = String.fromCharCode(0xFEFF);
+  const lineas = [header, ...filas].map(fila => fila.map(csvEscape).join(';'));
+  const csv = BOM + lineas.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportMovimientosCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
@@ -880,33 +1027,106 @@ async function exportCSV() {
     const signo = tipo === 'egreso' ? -1 : 1;
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR');
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
-    const montoStr = (signo * Number(m.monto)).toFixed(2).replace('.', ',');
-    return [fecha, categoria, m.descripcion || '', montoStr].map(csvEscape).join(';');
+    const montoStr = fmtCsvNumber(signo * Number(m.monto));
+    return [fecha, categoria, m.descripcion || '', montoStr];
   });
 
-  const header = ['Fecha', 'Categoría', 'Descripción', 'Monto'].map(csvEscape).join(';');
-  const BOM = String.fromCharCode(0xFEFF);
-  const csv = BOM + [header, ...filas].join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `movimientos_${periodoFilenameSlug()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  descargarCSV(`movimientos_${periodoFilenameSlug()}.csv`,
+    ['Fecha', 'Categoría', 'Descripción', 'Monto'], filas);
 }
 
-document.getElementById('exportBtn').addEventListener('click', exportCSV);
+async function exportResumenCSV() {
+  const { start, end } = getPeriodRange();
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('monto, categoria_id, es_retiro, es_retiro_extra, categorias(nombre, tipo)')
+    .gte('fecha', start).lte('fecha', end);
+  if (error) { console.error(error); return; }
 
-let amountsHidden = false;
+  const groups = {};
+  for (const m of data || []) {
+    if (!m.categorias) continue;
+    if (m.es_retiro_extra) continue; // aislado, se exporta desde "Ahorros"
+    const key = m.categoria_id;
+    groups[key] = groups[key] || { cat: m.categorias, total: 0, cantidad: 0 };
+    groups[key].total += m.es_retiro ? -Number(m.monto) : Number(m.monto);
+    groups[key].cantidad++;
+  }
+  const filas = Object.values(groups)
+    .sort((a, b) => b.total - a.total)
+    .map(g => [g.cat.nombre, g.cat.tipo === 'ingreso' ? 'Ingreso' : 'Gasto', g.cantidad, fmtCsvNumber(g.total)]);
+
+  descargarCSV(`resumen_${periodoFilenameSlug()}.csv`,
+    ['Categoría', 'Tipo', 'Cantidad de movimientos', 'Monto total'], filas);
+}
+
+async function exportAhorrosCSV() {
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('fecha, monto, monto_usd, descripcion, es_retiro, es_retiro_extra, categorias!inner(nombre, tipo)')
+    .eq('categorias.nombre', 'AHORROS');
+  if (error) { console.error(error); return; }
+
+  const inicioMes = startOfCurrentMonth();
+  const totales = new Map();
+  const bucketDe = (ap) => {
+    if (!totales.has(ap.key)) totales.set(ap.key, { label: ap.label, moneda: ap.moneda, ahorrado: 0, esteMes: 0, retiroExtra: 0 });
+    return totales.get(ap.key);
+  };
+  for (const m of data || []) {
+    const ap = apartadoDe(m.descripcion);
+    const bucket = bucketDe(ap);
+    const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
+    if (m.es_retiro_extra) { bucket.retiroExtra += valor; continue; }
+    const signo = m.es_retiro ? -1 : 1;
+    if (m.fecha < inicioMes) bucket.ahorrado += signo * valor;
+    else bucket.esteMes += signo * valor;
+  }
+
+  const hoy = new Date().toISOString().slice(0, 10).split('-').reverse().join('-');
+  const filas = Array.from(totales.values()).map(t => {
+    const subTotal = t.ahorrado + t.esteMes;
+    const total = subTotal - t.retiroExtra;
+    return [t.label, t.moneda === 'usd' ? 'U$D' : 'Pesos',
+      fmtCsvNumber(t.ahorrado), fmtCsvNumber(t.esteMes),
+      fmtCsvNumber(t.retiroExtra), fmtCsvNumber(total)];
+  });
+
+  descargarCSV(`ahorros_${hoy}.csv`,
+    ['Apartado', 'Moneda', 'Ahorrado', 'Este mes', 'Retiro Extra', 'Total'], filas);
+}
+
+const exportMenu = document.getElementById('exportMenu');
+document.getElementById('exportBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportMenu.classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  if (!exportMenu.classList.contains('hidden') && !e.target.closest('.export-wrap')) {
+    exportMenu.classList.add('hidden');
+  }
+});
+exportMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('.export-menu-item');
+  if (!item) return;
+  exportMenu.classList.add('hidden');
+  if (item.dataset.tipo === 'movimientos') exportMovimientosCSV();
+  else if (item.dataset.tipo === 'resumen') exportResumenCSV();
+  else if (item.dataset.tipo === 'ahorros') exportAhorrosCSV();
+});
+
+let amountsHidden = true; // arranca siempre oculto, no se recuerda entre sesiones
 let lastIngresos = 0, lastEgresos = 0;
 
 function renderBalance(movs) {
   let ingresos = 0, egresos = 0;
   for (const m of movs) {
+    if (m.es_retiro_extra) continue; // no toca el Balance general, solo la vista Ahorros
     const tipo = m.categorias ? m.categorias.tipo : null;
     if (tipo === 'ingreso') ingresos += Number(m.monto);
-    else if (tipo === 'egreso') egresos += Number(m.monto);
+    // Un retiro de AHORROS resta del total de Gastos (libera saldo) en vez de sumar
+    // aparte — mismo efecto neto que antes se lograba editando el aporte original.
+    else if (tipo === 'egreso') egresos += m.es_retiro ? -Number(m.monto) : Number(m.monto);
   }
   lastIngresos = ingresos;
   lastEgresos = egresos;
@@ -937,9 +1157,11 @@ function renderMovimientos(movs, emptyMsg) {
   }
   list.innerHTML = movs.map(m => {
     const tipo = m.categorias ? m.categorias.tipo : 'egreso';
-    const catName = m.categorias ? m.categorias.nombre : '(sin categoría)';
-    const sign = tipo === 'ingreso' ? '+' : '−';
-    const cls = tipo === 'ingreso' ? 'pos' : 'neg';
+    const retiroTag = m.es_retiro_extra ? ' (Retiro extra)' : (m.es_retiro ? ' (Retiro)' : '');
+    const catName = (m.categorias ? m.categorias.nombre : '(sin categoría)') + retiroTag;
+    // Un retiro libera saldo (resta del Gasto), así que se muestra igual que un ingreso.
+    const sign = (tipo === 'ingreso' || m.es_retiro) ? '+' : '−';
+    const cls = (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
     const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
     const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
@@ -948,7 +1170,7 @@ function renderMovimientos(movs, emptyMsg) {
         <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
         <div class="mid">
           <div class="cat">${catName}</div>
-          ${m.descripcion ? `<div class="desc">${m.descripcion}</div>` : ''}
+          ${m.descripcion ? `<div class="desc">${m.descripcion}${m.monto_usd != null ? ' · U$D ' + Number(m.monto_usd).toLocaleString('es-AR') : ''}</div>` : ''}
         </div>
         <div class="right">
           <div class="amt ${cls}">${sign} ${fmt(m.monto)}</div>
@@ -996,8 +1218,9 @@ async function runSearch(text) {
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   currentMovs = data || [];
-  document.getElementById('movListTitle').textContent = `Resultados (${currentMovs.length})`;
-  renderMovimientos(currentMovs, 'No se encontraron movimientos con esa descripción.');
+  const visibles = currentMovs.filter(m => !m.es_retiro_extra);
+  document.getElementById('movListTitle').textContent = `Resultados (${visibles.length})`;
+  renderMovimientos(visibles, 'No se encontraron movimientos con esa descripción.');
 }
 
 // ---------- Modal: nuevo movimiento ----------
@@ -1027,7 +1250,12 @@ function formatMontoDisplay(str) {
 function renderAmountDisplay() {
   const el = document.getElementById('amountDisplay');
   el.textContent = formatMontoDisplay(montoStr);
-  el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' ? 'pos' : 'neg');
+  el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' ? 'pos' : 'neg')
+    + (activeAmountTarget === 'main' ? ' active-target' : '');
+
+  const usdBtn = document.getElementById('movMontoUsd');
+  usdBtn.textContent = formatMontoDisplay(montoUsdStr);
+  usdBtn.classList.toggle('active', activeAmountTarget === 'usd');
 }
 
 function openModal(tipo) {
@@ -1036,6 +1264,8 @@ function openModal(tipo) {
   selectedCategoriaId = null;
   modalTitle.textContent = tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto';
   montoStr = '0';
+  montoUsdStr = '0';
+  activeAmountTarget = 'main';
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
   document.getElementById('saveAsFreqDesc').checked = false;
@@ -1058,6 +1288,9 @@ function openEditMovModal(mov) {
   selectedCategoriaId = mov.categoria_id;
   modalTitle.textContent = currentTipo === 'ingreso' ? 'Editar ingreso' : 'Editar gasto';
   montoStr = String(mov.monto).replace('.', ',');
+  montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
+  activeAmountTarget = 'main';
+  document.getElementById('movMontoUsd').classList.add('hidden'); // fuerza a updateMontoUsdVisibility a re-evaluar
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = mov.descripcion || '';
   document.getElementById('saveAsFreqDesc').checked = false;
@@ -1068,6 +1301,7 @@ function openEditMovModal(mov) {
   newCatForm.classList.remove('show');
   deleteMovBtn.classList.remove('hidden');
   updateCatSelectDisplay();
+  document.getElementById('esRetiroAhorro').checked = !!mov.es_retiro;
   renderDescSuggestions();
   stepMonto.classList.remove('hidden');
   stepCategoria.classList.add('hidden');
@@ -1075,13 +1309,16 @@ function openEditMovModal(mov) {
 }
 
 function pressKey(key) {
+  const isUsd = activeAmountTarget === 'usd';
+  let str = isUsd ? montoUsdStr : montoStr;
   if (key === 'back') {
-    montoStr = montoStr.length > 1 ? montoStr.slice(0, -1) : '0';
+    str = str.length > 1 ? str.slice(0, -1) : '0';
   } else if (key === ',') {
-    if (!montoStr.includes(',')) montoStr += ',';
+    if (!str.includes(',')) str += ',';
   } else {
-    montoStr = montoStr === '0' ? key : montoStr + key;
+    str = str === '0' ? key : str + key;
   }
+  if (isUsd) montoUsdStr = str; else montoStr = str;
   renderAmountDisplay();
 }
 
@@ -1168,16 +1405,29 @@ async function guardarMovimiento(categoria_id) {
   const monto = parseFloat(montoStr.replace(',', '.'));
   const fecha = document.getElementById('movFecha').value;
   const descripcion = document.getElementById('movDescripcion').value.trim();
+  const es_retiro = document.getElementById('esRetiroAhorro').checked;
+  // Un aporte (checkbox destildado) nunca puede quedar marcado como retiro extra —
+  // ese flag solo se puede tildar desde el modal de "Retiro Extra" en la vista Ahorros.
+  const es_retiro_extra = es_retiro ? undefined : false;
+
+  let monto_usd = null;
+  if (isAhorroUsd()) {
+    monto_usd = parseFloat(montoUsdStr.replace(',', '.'));
+    if (!monto_usd || monto_usd <= 0) { movError.textContent = 'Ingresá el monto en U$D'; return; }
+  }
 
   if (editingMovId) {
+    const update = { monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd };
+    if (es_retiro_extra !== undefined) update.es_retiro_extra = es_retiro_extra;
     const { error } = await sb.from('movimientos')
-      .update({ monto, categoria_id, fecha, descripcion: descripcion || null })
+      .update(update)
       .eq('id', editingMovId);
     if (error) { movError.textContent = error.message; return; }
   } else {
     const { data: userData } = await sb.auth.getUser();
     const { error } = await sb.from('movimientos').insert({
-      monto, categoria_id, fecha, descripcion: descripcion || null, user_id: userData.user.id
+      monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd,
+      es_retiro_extra: false, user_id: userData.user.id
     });
     if (error) { movError.textContent = error.message; return; }
   }
@@ -1492,25 +1742,25 @@ document.getElementById('descList').addEventListener('click', async (e) => {
 // ---------- Vista: resumen por categoría (dentro del mismo scroll que Movimientos) ----------
 const movView = document.getElementById('movView');
 const resumenView = document.getElementById('resumenView');
+const ahorrosView = document.getElementById('ahorrosView');
 const openResumenBtn = document.getElementById('openResumen');
+const openAhorrosBtn = document.getElementById('openAhorros');
 let inResumenView = false;
+let inAhorrosView = false;
 let resumenMovsById = {}; // para poder editar un movimiento tocado desde el detalle desplegado
 
 function showMovView() {
   resumenView.classList.add('hidden');
+  ahorrosView.classList.add('hidden');
   movView.classList.remove('hidden');
   inResumenView = false;
+  inAhorrosView = false;
   openResumenBtn.classList.remove('active');
+  openAhorrosBtn.classList.remove('active');
   document.getElementById('searchToggle').classList.remove('hidden');
 }
 
-async function showResumenView() {
-  await loadResumen();
-  movView.classList.add('hidden');
-  resumenView.classList.remove('hidden');
-  inResumenView = true;
-  openResumenBtn.classList.add('active');
-  // el buscador solo aplica a Movimientos, nunca al resumen por categoría
+function hideSearchForOtherView() {
   document.getElementById('searchToggle').classList.add('hidden');
   if (!searchInputEl.classList.contains('hidden')) {
     searchInputEl.classList.add('hidden');
@@ -1518,15 +1768,217 @@ async function showResumenView() {
   }
 }
 
+async function showResumenView() {
+  await loadResumen();
+  movView.classList.add('hidden');
+  ahorrosView.classList.add('hidden');
+  resumenView.classList.remove('hidden');
+  inResumenView = true;
+  inAhorrosView = false;
+  openResumenBtn.classList.add('active');
+  openAhorrosBtn.classList.remove('active');
+  // el buscador solo aplica a Movimientos, nunca al resumen por categoría ni a Ahorros
+  hideSearchForOtherView();
+}
+
+async function showAhorrosView() {
+  await loadAhorros();
+  movView.classList.add('hidden');
+  resumenView.classList.add('hidden');
+  ahorrosView.classList.remove('hidden');
+  inAhorrosView = true;
+  inResumenView = false;
+  openAhorrosBtn.classList.add('active');
+  openResumenBtn.classList.remove('active');
+  hideSearchForOtherView();
+}
+
 openResumenBtn.addEventListener('click', () => {
   if (inResumenView) showMovView(); else showResumenView();
+});
+
+openAhorrosBtn.addEventListener('click', () => {
+  if (inAhorrosView) showMovView(); else showAhorrosView();
+});
+
+function startOfCurrentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function claseMoneda(descripcion) {
+  const d = (descripcion || '').toLowerCase();
+  return (d.includes('usd') || d.includes('u$d') || d.includes('dolar')) ? 'usd' : 'ars';
+}
+
+// Cada descripción frecuente de AHORROS (ej. "FCI U$D", "Efectivo U$D") define su
+// propio apartado dentro de la vista Ahorros. Si la descripción no matchea ninguna,
+// cae en un apartado genérico "Otros" separado solo por moneda.
+function getApartadoFrecuentes() {
+  const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
+  if (!cat) return [];
+  return descripcionesFrecuentes
+    .filter(d => d.categoria_id === cat.id)
+    .slice()
+    .sort((a, b) => b.texto.length - a.texto.length); // más específico primero
+}
+
+function apartadoDe(descripcion) {
+  const desc = (descripcion || '').toLowerCase();
+  const moneda = claseMoneda(descripcion);
+  const match = getApartadoFrecuentes().find(d => desc.startsWith(d.texto.toLowerCase()));
+  if (match) return { key: match.texto, label: match.texto, moneda };
+  return { key: `otros-${moneda}`, label: moneda === 'usd' ? 'Otros (U$D)' : 'Otros (Pesos)', moneda };
+}
+
+let ahorrosMovsById = {}; // para poder editar un ítem de retiro extra tocado desde el listado
+
+async function loadAhorros() {
+  const { data, error } = await sb
+    .from('movimientos')
+    .select('id, fecha, monto, monto_usd, descripcion, es_retiro, es_retiro_extra, categoria_id, categorias!inner(id, nombre, tipo, icono, color)')
+    .eq('categorias.nombre', 'AHORROS');
+  const el = document.getElementById('ahorrosContent');
+  if (error) { console.error(error); el.innerHTML = ''; return; }
+
+  ahorrosMovsById = {};
+  const inicioMes = startOfCurrentMonth();
+  const totales = new Map();
+  const bucketDe = (ap) => {
+    if (!totales.has(ap.key)) totales.set(ap.key, { label: ap.label, moneda: ap.moneda, ahorrado: 0, esteMes: 0, retiroExtra: 0, extras: [] });
+    return totales.get(ap.key);
+  };
+  for (const m of data) {
+    ahorrosMovsById[m.id] = m;
+    const ap = apartadoDe(m.descripcion);
+    const bucket = bucketDe(ap);
+    // En U$D el monto real ahorrado es monto_usd (lo comprado), no el monto en
+    // pesos que salió del Balance — difieren por el tipo de cambio.
+    const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
+    if (m.es_retiro_extra) {
+      bucket.retiroExtra += valor;
+      bucket.extras.push(m);
+      continue; // no entra en Ahorrado/Este mes, queda aparte
+    }
+    const signo = m.es_retiro ? -1 : 1;
+    if (m.fecha < inicioMes) bucket.ahorrado += signo * valor;
+    else bucket.esteMes += signo * valor;
+  }
+
+  const bloques = Array.from(totales.entries())
+    .map(([key, t]) => ({ key, ...t }))
+    .filter(t => t.ahorrado !== 0 || t.esteMes !== 0 || t.retiroExtra !== 0)
+    .sort((a, b) => a.moneda !== b.moneda ? (a.moneda === 'usd' ? -1 : 1) : a.label.localeCompare(b.label));
+
+  if (!bloques.length) {
+    el.innerHTML = '<div class="empty-ahorros">Todavía no cargaste movimientos de AHORROS</div>';
+    return;
+  }
+
+  el.innerHTML = bloques.map(t => {
+    const subTotal = t.ahorrado + t.esteMes;
+    const total = subTotal - t.retiroExtra;
+    const conExtra = t.retiroExtra !== 0;
+    const extraSorted = t.extras.slice().sort((a, b2) => b2.fecha.localeCompare(a.fecha));
+    return `
+      <div class="ahorros-block">
+        <div class="section-title-row" style="padding:0 0 8px;">
+          <div class="section-title" style="padding:0; margin:0;">${t.label}</div>
+          <button type="button" class="btn-secondary sm add-retiro-extra-btn" data-label="${t.label}">+ Retiro Extra</button>
+        </div>
+        <div class="ahorros-rows">
+          <div class="ahorros-row"><div class="l">Ahorrado</div><div class="v">${fmt(t.ahorrado)}</div></div>
+          <div class="ahorros-row"><div class="l">Este mes</div><div class="v">${fmt(t.esteMes)}</div></div>
+          ${conExtra ? `<div class="ahorros-row"><div class="l">Sub Total</div><div class="v">${fmt(subTotal)}</div></div>` : ''}
+          ${conExtra ? `<div class="ahorros-row"><div class="l">Retiro Extra</div><div class="v">− ${fmt(t.retiroExtra)}</div></div>` : ''}
+          <div class="ahorros-row total"><div class="l">Total</div><div class="v">${fmt(total)}</div></div>
+        </div>
+        ${conExtra ? `
+          <div class="ahorros-extra-list">
+            ${extraSorted.map(m => {
+              const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+              return `
+                <button type="button" class="ahorros-extra-item" data-id="${m.id}">
+                  <div class="d-fecha">${fecha}</div>
+                  <div class="d-desc">${m.descripcion || '-'}</div>
+                  <div class="d-monto neg">${fmt(m.monto)}</div>
+                </button>`;
+            }).join('')}
+          </div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('ahorrosContent').addEventListener('click', (e) => {
+  const addBtn = e.target.closest('.add-retiro-extra-btn');
+  if (addBtn) { openRetiroExtraModal(addBtn.dataset.label); return; }
+  const item = e.target.closest('.ahorros-extra-item');
+  if (item) {
+    const mov = ahorrosMovsById[item.dataset.id];
+    if (mov) openEditMovModal(mov);
+  }
+});
+
+// ---------- Modal: Retiro Extra (compras/pagos grandes que impactan el acumulado) ----------
+const retiroExtraModal = document.getElementById('retiroExtraModal');
+const retiroExtraError = document.getElementById('retiroExtraError');
+let retiroExtraLabel = null;
+
+function openRetiroExtraModal(label) {
+  retiroExtraLabel = label;
+  document.getElementById('retiroExtraTitle').textContent = `Retiro Extra — ${label}`;
+  document.getElementById('retiroExtraMonto').value = '';
+  document.getElementById('retiroExtraDescripcion').value = '';
+  retiroExtraError.textContent = '';
+  retiroExtraModal.classList.remove('hidden');
+}
+
+document.getElementById('cancelRetiroExtra').addEventListener('click', () => {
+  retiroExtraModal.classList.add('hidden');
+});
+
+// Formatea con separador de miles mientras se tipea, conservando la posición del cursor.
+document.getElementById('retiroExtraMonto').addEventListener('input', (e) => {
+  const input = e.target;
+  const prevLength = input.value.length;
+  const prevCursor = input.selectionStart;
+  const raw = input.value.replace(/[^\d,]/g, '');
+  const formatted = formatMontoDisplay(raw);
+  input.value = formatted;
+  const diff = formatted.length - prevLength;
+  const cursor = Math.max(0, prevCursor + diff);
+  input.setSelectionRange(cursor, cursor);
+});
+
+document.getElementById('saveRetiroExtra').addEventListener('click', async () => {
+  retiroExtraError.textContent = '';
+  const monto = parseFloat(document.getElementById('retiroExtraMonto').value.replace(/\./g, '').replace(',', '.'));
+  if (!monto || monto <= 0) { retiroExtraError.textContent = 'Ingresá un monto válido'; return; }
+
+  const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
+  if (!cat) { retiroExtraError.textContent = 'No se encontró la categoría AHORROS'; return; }
+
+  const textoExtra = document.getElementById('retiroExtraDescripcion').value.trim();
+  const descripcion = retiroExtraLabel + (textoExtra ? ' - ' + textoExtra : '');
+
+  if (!confirm(`¿Confirmás el retiro extra de ${fmt(monto)} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
+
+  const { data: userData } = await sb.auth.getUser();
+  const { error } = await sb.from('movimientos').insert({
+    monto, categoria_id: cat.id, fecha: new Date().toISOString().slice(0, 10),
+    descripcion, es_retiro: true, es_retiro_extra: true, user_id: userData.user.id
+  });
+  if (error) { retiroExtraError.textContent = error.message; return; }
+
+  retiroExtraModal.classList.add('hidden');
+  await loadAhorros();
 });
 
 async function loadResumen() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('id, fecha, monto, descripcion, categoria_id, categorias(id, nombre, tipo, icono, color)')
+    .select('id, fecha, monto, descripcion, categoria_id, es_retiro, es_retiro_extra, categorias(id, nombre, tipo, icono, color)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
 
@@ -1534,10 +1986,13 @@ async function loadResumen() {
   const groups = {};
   for (const m of data) {
     if (!m.categorias) continue; // los movimientos "(sin categoría)" no entran en este resumen
+    if (m.es_retiro_extra) continue; // aislado, solo se ve en la vista Ahorros
     resumenMovsById[m.id] = m;
     const cid = m.categorias.id;
     groups[cid] = groups[cid] || { cat: m.categorias, total: 0, movs: [] };
-    groups[cid].total += Number(m.monto);
+    // Un retiro de AHORROS resta del total de la categoría (libera saldo), mismo
+    // criterio que en la tarjeta de Saldo.
+    groups[cid].total += m.es_retiro ? -Number(m.monto) : Number(m.monto);
     groups[cid].movs.push(m);
   }
   const all = Object.values(groups);
@@ -1580,11 +2035,14 @@ function toggleResumenDetail(btn, groups, cls) {
   const sorted = g.movs.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
   detail.innerHTML = sorted.map(m => {
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+    const desc = (m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : '');
+    const montoCls = m.es_retiro ? 'pos' : cls;
+    const sign = m.es_retiro ? '+ ' : '';
     return `
       <button type="button" class="resumen-detail-item" data-id="${m.id}">
         <div class="d-fecha">${fecha}</div>
-        <div class="d-desc">${m.descripcion || '-'}</div>
-        <div class="d-monto ${cls}">${fmt(m.monto)}</div>
+        <div class="d-desc">${desc}</div>
+        <div class="d-monto ${montoCls}">${sign}${fmt(m.monto)}</div>
       </button>`;
   }).join('');
   detail.classList.remove('hidden');
