@@ -191,6 +191,30 @@
   .mov-item .date { font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }
   .mov-item .amt.pos { color: var(--green); }
   .mov-item .amt.neg { color: var(--red); }
+
+  /* Agrupación por día dentro de Movimientos (mismo patrón visual que .resumen-row:
+     chevron que gira + globito de cantidad + total a la derecha). */
+  .day-group { display: flex; flex-direction: column; gap: 8px; }
+  .day-header {
+    width: 100%; display: flex; align-items: center; gap: 10px; padding: 4px 4px 0;
+    background: none; border: none; color: var(--text); text-align: left;
+  }
+  .day-header .day-label {
+    flex: 1; min-width: 0; font-size: 16px; font-weight: 600; color: var(--text);
+    text-transform: uppercase; letter-spacing: .04em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .day-header .count {
+    font-size: var(--fs-meta); color: var(--muted); background: var(--card-2);
+    border-radius: 999px; padding: 1px 7px; flex-shrink: 0;
+  }
+  .day-header .chevron {
+    width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; transition: transform .15s;
+  }
+  .day-group.open .chevron { transform: rotate(180deg); }
+  .day-movs { display: flex; flex-direction: column; gap: 8px; }
+  .day-group:not(.open) .day-movs { display: none; }
+
   .empty-msg { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
 
   /* ---- Componente compartido: ícono-badge de color de categoría ---- */
@@ -405,7 +429,7 @@
   .resumen-row.open .chevron { transform: rotate(180deg); }
   .resumen-detail { padding: 4px 10px 8px 52px; display: flex; flex-direction: column; gap: 6px; }
   .resumen-detail-item {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px;
     width: 100%; background: none; border: none; color: var(--text); text-align: left; padding: 2px 0;
   }
   .resumen-detail-item .d-fecha { color: var(--muted); flex-shrink: 0; }
@@ -523,7 +547,10 @@
 
     <div class="scroll-area">
       <div id="movView">
-        <div class="section-title" id="movListTitle">Movimientos</div>
+        <div class="section-title-row" style="padding: 0 20px;">
+          <div class="section-title" id="movListTitle" style="padding: 0;">Movimientos</div>
+          <button type="button" class="icon-btn" id="toggleAllDays" title="Plegar todos los días"><i data-lucide="chevrons-down-up"></i></button>
+        </div>
         <div id="movList"></div>
       </div>
       <div id="resumenView" class="hidden">
@@ -578,7 +605,7 @@
         <div class="desc-suggest-row" id="descSuggestRow"></div>
       </div>
 
-      <div class="field">
+      <div class="field" id="keypadField">
         <div class="keypad" id="keypad">
           <button type="button" class="key" data-key="1">1</button>
           <button type="button" class="key" data-key="2">2</button>
@@ -625,7 +652,13 @@
 <!-- MODAL: retiro extra de ahorro -->
 <div class="modal-overlay hidden" id="retiroExtraModal">
   <div class="modal">
-    <h2 id="retiroExtraTitle">Retiro Extra</h2>
+    <div class="modal-header-row">
+      <h2 id="retiroExtraTitle">Retiro Extra</h2>
+      <div class="fecha-pill-wrap">
+        <span id="retiroExtraFechaPillText">hoy</span>
+        <input type="date" id="retiroExtraFecha">
+      </div>
+    </div>
     <div class="field">
       <input type="text" id="retiroExtraMonto" inputmode="decimal" placeholder="Monto">
     </div>
@@ -1012,12 +1045,16 @@ document.getElementById('descSuggestRow').addEventListener('click', (e) => {
 
 document.getElementById('movDescripcion').addEventListener('input', updateMontoUsdVisibility);
 
+// Tocar cualquiera de los dos visores de monto trae de vuelta el teclado numérico si
+// estaba plegado por haber escrito la descripción (ver el listener de #movDescripcion).
 document.getElementById('movMontoUsd').addEventListener('click', () => {
   activeAmountTarget = 'usd';
+  keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
 document.getElementById('amountDisplay').addEventListener('click', () => {
   activeAmountTarget = 'main';
+  keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
 
@@ -1133,33 +1170,18 @@ async function exportAhorrosCSV() {
     .eq('categorias.nombre', 'AHORROS');
   if (error) { console.error(error); return; }
 
-  const inicioMes = startOfCurrentMonth();
-  const totales = new Map();
-  const bucketDe = (ap) => {
-    if (!totales.has(ap.key)) totales.set(ap.key, { label: ap.label, moneda: ap.moneda, ahorrado: 0, esteMes: 0, retiroExtra: 0 });
-    return totales.get(ap.key);
-  };
-  for (const m of data || []) {
-    const ap = apartadoDe(m.descripcion);
-    const bucket = bucketDe(ap);
-    const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
-    if (m.es_retiro_extra) { bucket.retiroExtra += valor; continue; }
-    const signo = m.es_retiro ? -1 : 1;
-    if (m.fecha < inicioMes) bucket.ahorrado += signo * valor;
-    else bucket.esteMes += signo * valor;
-  }
-
-  const hoy = new Date().toISOString().slice(0, 10).split('-').reverse().join('-');
-  const filas = Array.from(totales.values()).map(t => {
-    const subTotal = t.ahorrado + t.esteMes;
-    const total = subTotal - t.retiroExtra;
+  // Mismo cálculo que la vista Ahorros (función compartida), así el CSV nunca puede
+  // mostrar números distintos a los de la pantalla. Desde el 09/08/2026 respeta el
+  // período activo, por eso el nombre del archivo lo lleva.
+  const filas = agruparAhorros(data).map(t => {
+    const total = t.ahorrado + t.periodo - t.retiroExtra;
     return [t.label, t.moneda === 'usd' ? 'U$D' : 'Pesos',
-      fmtCsvNumber(t.ahorrado), fmtCsvNumber(t.esteMes),
+      fmtCsvNumber(t.ahorrado), fmtCsvNumber(t.periodo),
       fmtCsvNumber(t.retiroExtra), fmtCsvNumber(total)];
   });
 
-  descargarCSV(`ahorros_${hoy}_${horaFilenameSlug()}.csv`,
-    ['Apartado', 'Moneda', 'Ahorrado', 'Este mes', 'Retiro Extra', 'Total'], filas);
+  descargarCSV(`ahorros_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
+    ['Apartado', 'Moneda', 'Ahorrado', labelPeriodoAhorros(), 'Retiro Extra', 'Total'], filas);
 }
 
 function exportDescFrecuentesCSV() {
@@ -1234,23 +1256,17 @@ document.getElementById('toggleAmounts').addEventListener('click', () => {
   renderIngresosEgresos();
 });
 
-function renderMovimientos(movs, emptyMsg) {
-  const list = document.getElementById('movList');
-  if (!movs.length) {
-    list.innerHTML = `<div class="empty-msg">${emptyMsg || 'Todavía no hay movimientos. Usá + o − para cargar el primero.'}</div>`;
-    return;
-  }
-  list.innerHTML = movs.map(m => {
-    const tipo = m.categorias ? m.categorias.tipo : 'egreso';
-    const retiroTag = m.es_retiro_extra ? ' (Retiro extra)' : (m.es_retiro ? ' (Retiro)' : '');
-    const catName = (m.categorias ? m.categorias.nombre : '(sin categoría)') + retiroTag;
-    // Un retiro libera saldo (resta del Gasto), así que se muestra igual que un ingreso.
-    const sign = (tipo === 'ingreso' || m.es_retiro) ? '+' : '−';
-    const cls = (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
-    const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-    const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
-    const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
-    return `
+function movItemHtml(m) {
+  const tipo = m.categorias ? m.categorias.tipo : 'egreso';
+  const retiroTag = m.es_retiro_extra ? ' (Retiro extra)' : (m.es_retiro ? ' (Retiro)' : '');
+  const catName = (m.categorias ? m.categorias.nombre : '(sin categoría)') + retiroTag;
+  // Un retiro libera saldo (resta del Gasto), así que se muestra igual que un ingreso.
+  const sign = (tipo === 'ingreso' || m.es_retiro) ? '+' : '−';
+  const cls = (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
+  const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
+  const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
+  return `
       <button type="button" class="mov-item" data-id="${m.id}">
         <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
         <div class="mid">
@@ -1262,15 +1278,87 @@ function renderMovimientos(movs, emptyMsg) {
           <div class="date ${cls}">${fecha}</div>
         </div>
       </button>`;
-  }).join('');
+}
+
+// Deja el botón "plegar/desplegar todo" en sintonía con el estado real de los grupos:
+// si hay alguno abierto ofrece plegar, si están todos cerrados ofrece desplegar.
+function actualizarToggleAllDays() {
+  const btn = document.getElementById('toggleAllDays');
+  if (!btn) return;
+  const grupos = document.querySelectorAll('#movList .day-group');
+  btn.classList.toggle('hidden', grupos.length === 0);
+  if (!grupos.length) return;
+  const hayAbierto = [...grupos].some(g => g.classList.contains('open'));
+  btn.innerHTML = `<i data-lucide="${hayAbierto ? 'chevrons-down-up' : 'chevrons-up-down'}"></i>`;
+  btn.title = hayAbierto ? 'Plegar todos los días' : 'Desplegar todos los días';
   if (window.lucide) lucide.createIcons();
 }
 
+function renderMovimientos(movs, emptyMsg) {
+  const list = document.getElementById('movList');
+  if (!movs.length) {
+    list.innerHTML = `<div class="empty-msg">${emptyMsg || 'Todavía no hay movimientos. Usá + o − para cargar el primero.'}</div>`;
+    actualizarToggleAllDays();
+    return;
+  }
+  // Los movimientos ya vienen ordenados por fecha desc (y created_at desc) desde la
+  // consulta, así que agrupar recorriéndolos en orden preserva ese orden sin re-ordenar.
+  const grupos = [];
+  for (const m of movs) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.fecha === m.fecha) ultimo.movs.push(m);
+    else grupos.push({ fecha: m.fecha, movs: [m] });
+  }
+  // Dentro de cada día: primero los ingresos y después los gastos, cada bloque de mayor
+  // a menor monto. Un retiro de AHORROS va con los gastos (es lo que es), aunque se
+  // muestre en verde con "+", para que el orden no contradiga lo que suma y resta en el
+  // Saldo. Se ordena acá y no en la consulta para que aplique igual al buscador.
+  const esIngreso = (m) => (m.categorias ? m.categorias.tipo : 'egreso') === 'ingreso';
+  for (const g of grupos) {
+    g.movs.sort((a, b) => {
+      const ai = esIngreso(a), bi = esIngreso(b);
+      if (ai !== bi) return ai ? -1 : 1;
+      return Number(b.monto) - Number(a.monto);
+    });
+  }
+  list.innerHTML = grupos.map(g => {
+    const fechaLarga = new Date(g.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
+    return `
+      <div class="day-group open">
+        <button type="button" class="day-header">
+          <i data-lucide="chevron-down" class="chevron"></i>
+          <div class="day-label">${fechaLarga}</div>
+          <div class="count">${g.movs.length}</div>
+        </button>
+        <div class="day-movs">${g.movs.map(movItemHtml).join('')}</div>
+      </div>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+  actualizarToggleAllDays();
+}
+
 document.getElementById('movList').addEventListener('click', (e) => {
+  // El encabezado de día pliega/despliega su grupo; no abre ningún modal.
+  const header = e.target.closest('.day-header');
+  if (header) {
+    header.closest('.day-group').classList.toggle('open');
+    actualizarToggleAllDays();
+    return;
+  }
   const item = e.target.closest('.mov-item');
   if (!item) return;
   const mov = currentMovs.find(m => m.id === item.dataset.id);
   if (mov) openEditMovModal(mov);
+});
+
+// Botón al lado del título "Movimientos": pliega todos los días de una, o los despliega
+// todos si ya estaban cerrados. Evita ir día por día cuando el período tiene muchos.
+document.getElementById('toggleAllDays').addEventListener('click', () => {
+  const grupos = document.querySelectorAll('#movList .day-group');
+  if (!grupos.length) return;
+  const hayAbierto = [...grupos].some(g => g.classList.contains('open'));
+  grupos.forEach(g => g.classList.toggle('open', !hayAbierto));
+  actualizarToggleAllDays();
 });
 
 // ---------- Buscador (todo el historial, sin filtro de período) ----------
@@ -1320,11 +1408,81 @@ const stepCategoria = document.getElementById('stepCategoria');
 const catStepError = document.getElementById('catStepError');
 const movFechaInput = document.getElementById('movFecha');
 
+// Compartida por las píldoras de fecha de los dos modales (movimiento y retiro extra).
+function textoFechaPill(valorISO) {
+  return new Date(valorISO + 'T00:00:00')
+    .toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function updateFechaPill() {
-  const fecha = new Date(movFechaInput.value + 'T00:00:00');
-  document.getElementById('fechaPillText').textContent = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+  document.getElementById('fechaPillText').textContent = textoFechaPill(movFechaInput.value);
 }
 movFechaInput.addEventListener('change', updateFechaPill);
+
+// En desktop, hacer clic sobre un <input type="date"> NO abre el calendario: solo lo
+// abre el iconito de la derecha, que acá es invisible (el input está con opacity 0
+// estirado encima de la pill). Por eso desde la PC no se podía cambiar la fecha.
+// showPicker() lo abre a mano. En el celu el tap ya lo abría solo, así que ahí no
+// cambia nada (el try/catch cubre el caso de que el navegador lo rechace por estar
+// abriéndose ya, o de que no soporte showPicker).
+// querySelectorAll y no querySelector: hay una píldora de fecha en el modal de
+// movimiento y otra en el de Retiro Extra. Cada una abre SU propio input.
+document.querySelectorAll('.fecha-pill-wrap').forEach((wrap) => {
+  wrap.addEventListener('click', () => {
+    const inp = wrap.querySelector('input[type="date"]');
+    if (inp && typeof inp.showPicker === 'function') {
+      try { inp.showPicker(); } catch (e) { /* ignorado a propósito */ }
+    }
+  });
+});
+
+const movDescripcionInput = document.getElementById('movDescripcion');
+const keypadField = document.getElementById('keypadField');
+
+// En el celu, al tocar Descripción sube el teclado nativo (media pantalla) y el teclado
+// numérico de la app queda tapado y sin uso posible, así que se pliega.
+//
+// Ojo: NO se restaura con 'blur'. Se probó y rompía los chips de descripciones
+// frecuentes — al tocar un chip el campo pierde el foco ANTES de que se registre el
+// toque, el teclado volvía, el modal cambiaba de alto, los chips se movían y el dedo
+// terminaba en otro lado. Se restaura al tocar el visor de monto (ver más abajo), que
+// es el momento en que realmente hace falta de nuevo, y al abrir el modal.
+movDescripcionInput.addEventListener('focus', () => keypadField.classList.add('hidden'));
+
+// La tecla de "enter/retorno" del teclado del celu cierra el teclado, igual que el ✓ de
+// la barra que agrega iOS. No guarda el movimiento: para eso está el botón Guardar, y
+// que Enter guardara de una haría muy fácil cargar algo a medio completar sin querer.
+// Separador entre la descripción frecuente y la anotación libre del movimiento.
+// Se eligió " // " y NO " - " porque el guion ya está tomado: los Retiro Extra se
+// guardan como "FCI U$D - cocina", y usar el mismo separador a mano haría
+// indistinguible una anotación propia de un retiro extra generado por la app.
+const DESC_SEPARADOR = ' // ';
+
+movDescripcionInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    movDescripcionInput.blur();
+    return;
+  }
+
+  // Espacio inmediatamente después de elegir un chip de descripción frecuente: en vez
+  // de un espacio suelto, escribe " // " para separar la anotación libre.
+  // Solo dispara si el campo tiene EXACTAMENTE el texto de un chip (es decir, recién lo
+  // tocaste y no escribiste nada más) y el cursor está al final — así todos los demás
+  // espacios, incluidos los de la anotación, siguen siendo espacios normales.
+  if (e.key === ' ') {
+    const val = movDescripcionInput.value;
+    if (val.includes('//')) return;
+    if (movDescripcionInput.selectionStart !== val.length) return;
+    const esTextoDeChip = [...document.querySelectorAll('#descSuggestRow .desc-suggest-chip')]
+      .some(c => c.dataset.texto === val);
+    if (!esTextoDeChip) return;
+    e.preventDefault();
+    movDescripcionInput.value = val + DESC_SEPARADOR;
+    const fin = movDescripcionInput.value.length;
+    movDescripcionInput.setSelectionRange(fin, fin);
+  }
+});
 
 function formatMontoDisplay(str) {
   const [intPart, decPart] = str.split(',');
@@ -1355,6 +1513,7 @@ function openModal(tipo) {
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
   document.getElementById('saveAsFreqDesc').checked = false;
+  keypadField.classList.remove('hidden'); // por si el modal anterior se cerró escribiendo la descripción
   movFechaInput.value = new Date().toISOString().slice(0, 10);
   updateFechaPill();
   movError.textContent = '';
@@ -1381,6 +1540,7 @@ function openEditMovModal(mov) {
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = mov.descripcion || '';
   document.getElementById('saveAsFreqDesc').checked = false;
+  keypadField.classList.remove('hidden'); // por si el modal anterior se cerró escribiendo la descripción
   movFechaInput.value = mov.fecha;
   updateFechaPill();
   movError.textContent = '';
@@ -1491,7 +1651,10 @@ async function guardarMovimiento(categoria_id) {
   movError.textContent = '';
   const monto = parseFloat(montoStr.replace(',', '.'));
   const fecha = document.getElementById('movFecha').value;
-  const descripcion = document.getElementById('movDescripcion').value.trim();
+  // Si el separador quedó colgando sin anotación (tocaste el chip, diste espacio y no
+  // escribiste nada más), se limpia para no guardar "FCI Pesos //".
+  const descripcion = document.getElementById('movDescripcion').value
+    .trim().replace(/\s*\/\/\s*$/, '').trim();
   const es_retiro = document.getElementById('esRetiroAhorro').checked;
   // Un aporte (checkbox destildado) nunca puede quedar marcado como retiro extra —
   // ese flag solo se puede tildar desde el modal de "Retiro Extra" en la vista Ahorros.
@@ -1519,14 +1682,19 @@ async function guardarMovimiento(categoria_id) {
     if (error) { movError.textContent = error.message; return; }
   }
 
-  if (document.getElementById('saveAsFreqDesc').checked && descripcion) {
+  // Solo se guarda como frecuente la parte ANTERIOR al separador: la anotación libre es
+  // de ese movimiento puntual, no una descripción reutilizable. Importante sobre todo en
+  // AHORROS, donde cada descripción frecuente crea un apartado propio en la vista
+  // Ahorros — guardar "FCI Pesos // cocina" generaría un apartado fantasma.
+  const textoFrecuente = descripcion.split('//')[0].trim();
+  if (document.getElementById('saveAsFreqDesc').checked && textoFrecuente) {
     const dup = descripcionesFrecuentes.some(d => d.categoria_id === categoria_id
-      && d.texto.toLowerCase() === descripcion.toLowerCase());
+      && d.texto.toLowerCase() === textoFrecuente.toLowerCase());
     if (!dup) {
       const { data: userData } = await sb.auth.getUser();
       const { data, error } = await sb.from('descripciones_frecuentes')
         .insert({
-          texto: descripcion, categoria_id, orden: nextOrdenDesc(categoria_id),
+          texto: textoFrecuente, categoria_id, orden: nextOrdenDesc(categoria_id),
           user_id: userData.user.id
         })
         .select().single();
@@ -1894,9 +2062,11 @@ openAhorrosBtn.addEventListener('click', () => {
 
 openMovimientosBtn.addEventListener('click', showMovView);
 
-function startOfCurrentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+// Etiqueta de la fila del período activo, según el selector Día/Mes/Año.
+function labelPeriodoAhorros() {
+  if (periodMode === 'year') return 'Este año';
+  if (periodMode === 'day') return 'Este día';
+  return 'Este mes';
 }
 
 function claseMoneda(descripcion) {
@@ -1924,6 +2094,53 @@ function apartadoDe(descripcion) {
   return { key: `otros-${moneda}`, label: moneda === 'usd' ? 'Otros (U$D)' : 'Otros (Pesos)', moneda };
 }
 
+// Reparte los movimientos de AHORROS en apartados según el período activo del selector
+// (Día/Mes/Año). La usan LA VISTA y EL EXPORT — antes cada uno tenía su propia copia del
+// cálculo y podían llegar a mostrar números distintos.
+//
+// Criterio (cambiado el 09/08/2026, antes era siempre el mes calendario real y los
+// retiros extra eran un acumulado de por vida):
+//   - ahorrado    : todo lo ANTERIOR al período, con signo, INCLUIDOS los retiros extra
+//                   viejos. Esa plata ya salió de verdad, así que tiene que quedar
+//                   descontada acá — si no, el Total mentiría.
+//   - periodo     : los movimientos DENTRO del período, sin los retiros extra.
+//   - retiroExtra : solo los retiros extra DENTRO del período.
+//   - lo posterior al período se ignora: la vista muestra el estado al cierre de ese
+//     período, no el de hoy.
+// Total = ahorrado + periodo − retiroExtra, que da lo mismo que antes cuando estás
+// parado en el mes corriente.
+function agruparAhorros(movs) {
+  const { start, end } = getPeriodRange();
+  const totales = new Map();
+  const bucketDe = (ap) => {
+    if (!totales.has(ap.key)) {
+      totales.set(ap.key, {
+        key: ap.key, label: ap.label, moneda: ap.moneda,
+        ahorrado: 0, periodo: 0, retiroExtra: 0, extras: []
+      });
+    }
+    return totales.get(ap.key);
+  };
+
+  for (const m of movs || []) {
+    const ap = apartadoDe(m.descripcion);
+    const bucket = bucketDe(ap);
+    // En U$D el monto real ahorrado es monto_usd (lo comprado), no el monto en pesos
+    // que salió del Balance — difieren por el tipo de cambio.
+    const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
+    const signo = m.es_retiro ? -1 : 1;
+
+    if (m.fecha < start) { bucket.ahorrado += signo * valor; continue; }
+    if (m.fecha > end) continue;
+    if (m.es_retiro_extra) { bucket.retiroExtra += valor; bucket.extras.push(m); continue; }
+    bucket.periodo += signo * valor;
+  }
+
+  return Array.from(totales.values())
+    .filter(t => t.ahorrado !== 0 || t.periodo !== 0 || t.retiroExtra !== 0)
+    .sort((a, b) => a.moneda !== b.moneda ? (a.moneda === 'usd' ? -1 : 1) : a.label.localeCompare(b.label));
+}
+
 let ahorrosMovsById = {}; // para poder editar un ítem de retiro extra tocado desde el listado
 
 async function loadAhorros() {
@@ -1935,41 +2152,21 @@ async function loadAhorros() {
   if (error) { console.error(error); el.innerHTML = ''; return; }
 
   ahorrosMovsById = {};
-  const inicioMes = startOfCurrentMonth();
-  const totales = new Map();
-  const bucketDe = (ap) => {
-    if (!totales.has(ap.key)) totales.set(ap.key, { label: ap.label, moneda: ap.moneda, ahorrado: 0, esteMes: 0, retiroExtra: 0, extras: [] });
-    return totales.get(ap.key);
-  };
-  for (const m of data) {
-    ahorrosMovsById[m.id] = m;
-    const ap = apartadoDe(m.descripcion);
-    const bucket = bucketDe(ap);
-    // En U$D el monto real ahorrado es monto_usd (lo comprado), no el monto en
-    // pesos que salió del Balance — difieren por el tipo de cambio.
-    const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
-    if (m.es_retiro_extra) {
-      bucket.retiroExtra += valor;
-      bucket.extras.push(m);
-      continue; // no entra en Ahorrado/Este mes, queda aparte
-    }
-    const signo = m.es_retiro ? -1 : 1;
-    if (m.fecha < inicioMes) bucket.ahorrado += signo * valor;
-    else bucket.esteMes += signo * valor;
-  }
+  for (const m of data) ahorrosMovsById[m.id] = m;
 
-  const bloques = Array.from(totales.entries())
-    .map(([key, t]) => ({ key, ...t }))
-    .filter(t => t.ahorrado !== 0 || t.esteMes !== 0 || t.retiroExtra !== 0)
-    .sort((a, b) => a.moneda !== b.moneda ? (a.moneda === 'usd' ? -1 : 1) : a.label.localeCompare(b.label));
+  const bloques = agruparAhorros(data);
 
   if (!bloques.length) {
-    el.innerHTML = '<div class="empty-ahorros">Todavía no cargaste movimientos de AHORROS</div>';
+    // Si hay movimientos pero ninguno cae en el período elegido, el mensaje tiene que
+    // decir eso y no "todavía no cargaste nada", que sería engañoso.
+    el.innerHTML = data.length
+      ? '<div class="empty-ahorros">No hay movimientos de AHORROS en este período</div>'
+      : '<div class="empty-ahorros">Todavía no cargaste movimientos de AHORROS</div>';
     return;
   }
 
   el.innerHTML = bloques.map(t => {
-    const subTotal = t.ahorrado + t.esteMes;
+    const subTotal = t.ahorrado + t.periodo;
     const total = subTotal - t.retiroExtra;
     const conExtra = t.retiroExtra !== 0;
     const extraSorted = t.extras.slice().sort((a, b2) => b2.fecha.localeCompare(a.fecha));
@@ -1981,7 +2178,7 @@ async function loadAhorros() {
         </div>
         <div class="ahorros-rows">
           <div class="ahorros-row"><div class="l">Ahorrado</div><div class="v">${fmt(t.ahorrado)}</div></div>
-          <div class="ahorros-row"><div class="l">Este mes</div><div class="v">${fmt(t.esteMes)}</div></div>
+          <div class="ahorros-row"><div class="l">${labelPeriodoAhorros()}</div><div class="v">${fmt(t.periodo)}</div></div>
           ${conExtra ? `<div class="ahorros-row"><div class="l">Sub Total</div><div class="v">${fmt(subTotal)}</div></div>` : ''}
           ${conExtra ? `<div class="ahorros-row"><div class="l">Retiro Extra</div><div class="v">− ${fmt(t.retiroExtra)}</div></div>` : ''}
           <div class="ahorros-row total"><div class="l">Total</div><div class="v">${fmt(total)}</div></div>
@@ -2022,6 +2219,13 @@ const deleteRetiroExtraBtn = document.getElementById('deleteRetiroExtraBtn');
 let retiroExtraLabel = null;
 let editingRetiroExtraMov = null; // movimiento en edición, null = alta nueva
 
+const retiroExtraFechaInput = document.getElementById('retiroExtraFecha');
+function updateRetiroExtraFechaPill() {
+  document.getElementById('retiroExtraFechaPillText').textContent =
+    textoFechaPill(retiroExtraFechaInput.value);
+}
+retiroExtraFechaInput.addEventListener('change', updateRetiroExtraFechaPill);
+
 function openRetiroExtraModal(label, mov) {
   editingRetiroExtraMov = mov || null;
   retiroExtraLabel = mov ? apartadoDe(mov.descripcion).label : label;
@@ -2032,6 +2236,9 @@ function openRetiroExtraModal(label, mov) {
   // en "FCI Pesos - cocina") — el apartado en sí no se toca desde acá.
   const textoLibre = mov ? mov.descripcion.slice(retiroExtraLabel.length).replace(/^\s*-\s*/, '') : '';
   document.getElementById('retiroExtraDescripcion').value = textoLibre;
+  // Al dar de alta arranca en hoy; al editar, con la fecha real del movimiento.
+  retiroExtraFechaInput.value = mov ? mov.fecha : new Date().toISOString().slice(0, 10);
+  updateRetiroExtraFechaPill();
   deleteRetiroExtraBtn.classList.toggle('hidden', !mov);
   retiroExtraError.textContent = '';
   retiroExtraModal.classList.remove('hidden');
@@ -2068,13 +2275,16 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
   const monto = parseFloat(document.getElementById('retiroExtraMonto').value.replace(/\./g, '').replace(',', '.'));
   if (!monto || monto <= 0) { retiroExtraError.textContent = 'Ingresá un monto válido'; return; }
 
+  const fecha = retiroExtraFechaInput.value;
+  if (!fecha) { retiroExtraError.textContent = 'Elegí una fecha'; return; }
+
   const textoExtra = document.getElementById('retiroExtraDescripcion').value.trim();
   const descripcion = retiroExtraLabel + (textoExtra ? ' - ' + textoExtra : '');
 
   if (editingRetiroExtraMov) {
     if (!confirm(`¿Guardar los cambios de este retiro extra (${fmt(monto)})?`)) return;
     const { error } = await sb.from('movimientos')
-      .update({ monto, descripcion })
+      .update({ monto, descripcion, fecha })
       .eq('id', editingRetiroExtraMov.id);
     if (error) { retiroExtraError.textContent = error.message; return; }
   } else {
@@ -2083,7 +2293,7 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
     if (!confirm(`¿Confirmás el retiro extra de ${fmt(monto)} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
     const { data: userData } = await sb.auth.getUser();
     const { error } = await sb.from('movimientos').insert({
-      monto, categoria_id: cat.id, fecha: new Date().toISOString().slice(0, 10),
+      monto, categoria_id: cat.id, fecha,
       descripcion, es_retiro: true, es_retiro_extra: true, user_id: userData.user.id
     });
     if (error) { retiroExtraError.textContent = error.message; return; }
@@ -2414,7 +2624,13 @@ function toggleResumenDetail(btn, groups, cls) {
   const isOpen = row.classList.toggle('open');
   if (!isOpen) { detail.classList.add('hidden'); return; }
   const g = groups.find(x => x.cat.id === btn.dataset.cat);
-  const sorted = g.movs.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Fecha más nueva primero y, a igual fecha, el monto mayor arriba (mismo criterio que
+  // la lista de Movimientos: se busca por importe, así que el grande tiene que saltar).
+  const sorted = g.movs.slice().sort((a, b) => {
+    const porFecha = b.fecha.localeCompare(a.fecha);
+    if (porFecha !== 0) return porFecha;
+    return Number(b.monto) - Number(a.monto);
+  });
   detail.innerHTML = sorted.map(m => {
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
     const desc = (m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : '');
