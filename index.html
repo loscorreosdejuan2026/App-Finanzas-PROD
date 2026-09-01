@@ -12,6 +12,8 @@
 <meta name="apple-mobile-web-app-title" content="Mi Administración">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<!-- SheetJS: solo para leer .xlsx/.xls en el importador. Misma versión que usa Tablero. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #16181c;
@@ -491,8 +493,8 @@
       <header>
         <div class="app-name">Mi Administración</div>
         <div class="header-actions">
-          <button type="button" class="icon-btn import-btn" id="importBtn" title="Importar movimientos desde CSV"><i data-lucide="upload"></i></button>
-          <input type="file" id="importFileInput" accept=".csv" class="hidden">
+          <button type="button" class="icon-btn import-btn" id="importBtn" title="Importar movimientos desde Excel o CSV"><i data-lucide="upload"></i></button>
+          <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" class="hidden">
           <div class="export-wrap">
             <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar a CSV"><i data-lucide="download"></i></button>
             <div class="export-menu hidden" id="exportMenu">
@@ -2327,8 +2329,10 @@ function parseCsvText(text) {
   return rows.filter(r => !(r.length === 1 && r[0].trim() === ''));
 }
 
-function parseCsvFecha(str) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((str || '').trim());
+function parseCsvFecha(valor) {
+  // String() defensivo: desde Excel una celda puede llegar tipada (número, Date) y no
+  // como texto. filasDesdeExcel() ya normaliza, esto es el cinturón de seguridad.
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(valor ?? '').trim());
   if (!m) return null;
   const day = Number(m[1]), month = Number(m[2]), year = Number(m[3]);
   const dt = new Date(year, month - 1, day);
@@ -2336,8 +2340,10 @@ function parseCsvFecha(str) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function parseCsvMonto(str) {
-  const s = (str || '').trim().replace(/\./g, '').replace(',', '.');
+function parseCsvMonto(valor) {
+  // Desde un CSV el importe llega como texto ("4.000.000", "1.234,56"); desde Excel,
+  // filasDesdeExcel() ya lo pasó a texto con coma decimal. String() por las dudas.
+  const s = String(valor ?? '').trim().replace(/\./g, '').replace(',', '.');
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
   return Number(s);
 }
@@ -2347,28 +2353,76 @@ document.getElementById('importBtn').addEventListener('click', () => {
   document.getElementById('importFileInput').click();
 });
 
+// Acepta .xlsx/.xls además de .csv (agregado 09/08/2026). El Excel se convierte a la
+// misma matriz de filas que produce parseCsvText y de ahí en adelante el camino es
+// idéntico: mismo chequeo de encabezado, mismas reglas por fila, mismo preview.
 document.getElementById('importFileInput').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  const esExcel = /\.xlsx?$/i.test(file.name);
   const reader = new FileReader();
-  reader.onload = () => processImportFile(reader.result);
-  reader.readAsText(file, 'UTF-8');
+  reader.onerror = () => alert('No se pudo leer el archivo.');
+  reader.onload = () => {
+    if (esExcel) {
+      const filas = filasDesdeExcel(reader.result);
+      if (filas) validarEncabezadoYPrevisualizar(filas);
+    } else {
+      procesarTextoCsv(reader.result);
+    }
+  };
+  if (esExcel) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file, 'UTF-8');
 });
 
-function processImportFile(text) {
+// Las celdas de Excel llegan tipadas: una fecha es un Date y un importe es un number.
+// Se normalizan al mismo texto que tendría el CSV para no duplicar reglas de parseo.
+function celdaExcelATexto(v) {
+  if (v == null) return '';
+  if (v instanceof Date) return `${v.getDate()}/${v.getMonth() + 1}/${v.getFullYear()}`;
+  // Coma decimal, sin separador de miles: es lo que parseCsvMonto sabe leer. Ojo que
+  // String(6020.5) da "6020.5" y parseCsvMonto borra los puntos como si fueran miles
+  // — por eso el reemplazo, si no 6020,5 se convertiría en 60205.
+  if (typeof v === 'number') return String(v).replace('.', ',');
+  return String(v).trim();
+}
+
+function filasDesdeExcel(arrayBuffer) {
+  if (typeof XLSX === 'undefined') {
+    alert('No se pudo cargar la librería para leer Excel (se baja de internet al abrir la app). Revisá la conexión y recargá la página, o guardá el archivo como CSV UTF-8.');
+    return null;
+  }
+  let wb;
+  try {
+    wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
+  } catch (err) {
+    console.error(err);
+    alert('No se pudo leer el Excel. Puede estar dañado o protegido con contraseña.');
+    return null;
+  }
+  // Solo la primera hoja, a propósito: el archivo del usuario tiene el presupuesto ahí.
+  const hoja = wb.Sheets[wb.SheetNames[0]];
+  if (!hoja) { alert('El Excel no tiene ninguna hoja.'); return null; }
+  return XLSX.utils.sheet_to_json(hoja, { header: 1, blankrows: false, defval: '' })
+    .map(fila => fila.map(celdaExcelATexto));
+}
+
+function procesarTextoCsv(text) {
   // Un byte inválido en UTF-8 se decodifica como el carácter de reemplazo — si aparece,
   // el archivo no estaba realmente en UTF-8 (típico de guardar como "CSV" a secas).
   if (text.includes('�')) {
-    alert('El archivo no está en UTF-8. Volvé a guardarlo desde Excel eligiendo "CSV UTF-8 (delimitado por comas)".');
+    alert('El archivo no está en UTF-8. Volvé a guardarlo desde Excel eligiendo "CSV UTF-8 (delimitado por comas)" — o subí el .xlsx directamente, que no tiene este problema.');
     return;
   }
-  const rows = parseCsvText(text);
-  if (!rows.length) { alert('El archivo está vacío.'); return; }
+  validarEncabezadoYPrevisualizar(parseCsvText(text));
+}
 
-  const header = rows[0].map(h => h.trim());
+function validarEncabezadoYPrevisualizar(rows) {
+  if (!rows || !rows.length) { alert('El archivo está vacío.'); return; }
+
+  const header = rows[0].map(h => String(h ?? '').trim());
   const headerOk = header.length === IMPORT_HEADER.length && header.every((h, i) => h === IMPORT_HEADER[i]);
   if (!headerOk) {
-    alert('Este archivo no tiene el formato esperado (Fecha;Tipo;Categoría;Descripción;Monto). Exportá "Movimientos" desde esta misma app para tener la estructura correcta.');
+    alert(`Este archivo no tiene el formato esperado.\n\nSe esperaba: ${IMPORT_HEADER.join(' | ')}\nSe encontró: ${header.join(' | ') || '(vacío)'}\n\nLa primera fila tiene que ser exactamente ese encabezado.`);
     return;
   }
 
