@@ -2330,15 +2330,29 @@ async function checkHistorico() {
   openHistoricoBtn.classList.toggle('hidden', !!error || !count);
 }
 
-// Las categorías del selector dependen del Tipo elegido (Gastos / Ingresos / todos).
-// "Todos" junta las dos listas sin repetir (DEPTO Rio IV / RIO IV cuentan como una).
+// Las categorías del selector siguen EL MISMO ORDEN que el usuario definió en "Categorías"
+// (▲▼ de cada tipo), no el alfabético. Solo se listan las que tienen histórico (HIST_CAT_*);
+// si alguna del histórico ya no existe en la app, va al final de su tipo. Con "Todos los tipos"
+// se agrupan en GASTOS e INGRESOS (TARJETAS y DEPTO RIO IV están en los dos, por eso el valor
+// de cada opción lleva el tipo: "egreso|TARJETAS").
+function categoriasHistoricoOrdenadas(tipo) {
+  const conHistorico = (tipo === 'egreso' ? HIST_CAT_EGRESO : HIST_CAT_INGRESO);
+  const enApp = categorias.filter(c => c.tipo === tipo)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+    .map(c => c.nombre.toUpperCase());
+  const ordenadas = enApp.filter(n => conHistorico.includes(n));
+  return [...ordenadas, ...conHistorico.filter(n => !ordenadas.includes(n))];
+}
+
 function llenarCategoriasHistorico() {
   const tipo = document.getElementById('histTipo').value;
-  const lista = tipo === 'egreso' ? HIST_CAT_EGRESO : tipo === 'ingreso' ? HIST_CAT_INGRESO
-    : [...new Map([...HIST_CAT_EGRESO, ...HIST_CAT_INGRESO].map(c => [c.toLowerCase(), c])).values()]
-        .sort((a, b) => a.localeCompare(b));
-  document.getElementById('histCat').innerHTML = '<option value="">CATEGORÍA: TODAS</option>'
-    + lista.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  const opciones = (t) => categoriasHistoricoOrdenadas(t)
+    .map(n => `<option value="${t}|${esc(n)}">${esc(n)}</option>`).join('');
+  let html = '<option value="">CATEGORÍA: TODAS</option>';
+  if (tipo) html += opciones(tipo);
+  else html += `<optgroup label="GASTOS">${opciones('egreso')}</optgroup>`
+    + `<optgroup label="INGRESOS">${opciones('ingreso')}</optgroup>`;
+  document.getElementById('histCat').innerHTML = html;
 }
 
 function histItemHtml(r) {
@@ -2369,14 +2383,17 @@ async function loadHistorico(reset) {
   const miRequest = ++histRequest;
   if (reset) histOffset = 0;
   const texto = document.getElementById('histSearch').value.trim();
-  const tipo = document.getElementById('histTipo').value;
-  const cat = document.getElementById('histCat').value;
+  let tipo = document.getElementById('histTipo').value;
+  // El valor de la categoría es "tipo|NOMBRE": así TARJETAS de Gastos y de Ingresos se filtran
+  // por separado aunque se elija desde "Todos los tipos".
+  const [catTipo, catNombre] = (document.getElementById('histCat').value || '|').split('|');
+  if (catTipo) tipo = catTipo;
 
   let q = sb.from('historial_monefy').select('*', { count: 'exact' });
   if (texto) q = q.ilike('descripcion', `%${texto.replace(/[\\%_]/g, '\\$&')}%`);
   if (tipo) q = q.eq('tipo', tipo);
-  // ilike sin comodines = igualdad sin distinguir mayúsculas (DEPTO Rio IV / RIO IV)
-  if (cat) q = q.ilike('categoria_hoy', cat.replace(/[\\%_]/g, '\\$&'));
+  // ilike sin comodines = igualdad sin distinguir mayúsculas
+  if (catNombre) q = q.ilike('categoria_hoy', catNombre.replace(/[\\%_]/g, '\\$&'));
   q = q.order('fecha', { ascending: false }).order('id', { ascending: true })
     .range(histOffset, histOffset + HIST_PAGE - 1);
 
