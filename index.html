@@ -2705,6 +2705,12 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
 
 // ---------- Importar movimientos desde CSV (mismo formato que "Exportar > Movimientos") ----------
 const IMPORT_HEADER = ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'];
+
+// Las dos "bandejas" del método de presupuesto del usuario: a comienzo de mes carga ahí todo lo
+// que va a pagar (M_PAGO) y a cobrar (Por Cobrar), y con los días mueve cada movimiento a su
+// categoría real. Por eso el importador nunca les crea descripciones frecuentes.
+const BANDEJAS_PRESUPUESTO = ['m_pago', 'por cobrar'];
+const esBandejaPresupuesto = (nombre) => BANDEJAS_PRESUPUESTO.includes(String(nombre || '').trim().toLowerCase());
 let importRows = [];
 
 // Parser CSV chico: separador ";", campos entre comillas (con "" como comilla escapada),
@@ -2866,7 +2872,10 @@ async function buildImportPreview(dataRows) {
     const descMatch = row.categoriaId
       ? descripcionesFrecuentes.find(d => d.categoria_id === row.categoriaId && d.texto.toLowerCase() === row.descripcion.toLowerCase())
       : null;
-    row.descripcionIsNew = row.descripcion !== '' && !descMatch;
+    // En las bandejas del presupuesto (M_PAGO / Por Cobrar) las descripciones son pendientes
+    // de reconciliar, no sugerencias reutilizables: no se marcan como "nuevas" ni se crean como
+    // descripciones frecuentes (antes M_PAGO se llenaba de chips: Aguas, EPE, Netflix...).
+    row.descripcionIsNew = row.descripcion !== '' && !descMatch && !esBandejaPresupuesto(row.categoriaNombre);
   }
 
   // Duplicados: se compara contra los movimientos ya cargados en el rango de fechas del archivo.
