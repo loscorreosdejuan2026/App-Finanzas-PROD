@@ -48,6 +48,22 @@
   #app { max-width: 480px; margin: 0 auto; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
   .hidden { display: none !important; }
 
+  /* Banners "ENTORNO DE TEST" (arriba y abajo, fondo blanco y letras negras). Se activan
+     solos cuando la app apunta a la base de TEST (ver el script): en PROD nunca se ven, así
+     el index.html es el mismo en los dos entornos salvo las 2 líneas de credenciales. */
+  .env-banner { display: none; }
+  body.env-test .env-banner {
+    display: flex; align-items: center; justify-content: center; position: fixed; left: 0; right: 0;
+    height: 24px; background: #fff; color: #000; font-size: 12px; font-weight: 800;
+    letter-spacing: .12em; z-index: 100;
+  }
+  body.env-test .env-banner.top { top: 0; }
+  body.env-test .env-banner.bottom { bottom: 0; }
+  /* se reserva el lugar de los banners para que no tapen la app ni los modales */
+  body.env-test #app { height: calc(100dvh - 48px); margin-top: 24px; }
+  body.env-test #mainScreen { height: 100%; }
+  body.env-test .modal-overlay { top: 24px; bottom: 24px; }
+
   /* ---- Login ---- */
   #loginScreen {
     flex: 1; display: flex; flex-direction: column; justify-content: center;
@@ -201,6 +217,24 @@
   .mov-item .amt.pos { color: var(--green); }
   .mov-item .amt.neg { color: var(--red); }
 
+  /* Buscadores con "×" para limpiar: la × aparece sola cuando hay texto (:placeholder-shown
+     también reacciona a cambios hechos por código, no solo a lo que se tipea). */
+  /* width:0 + flex-grow: el buscador ocupa SOLO lo que sobra y no aporta ancho propio. Sin esto,
+     Safari de iPhone le da al <input> un ancho mínimo (~20 caracteres) y con 4 íconos al lado
+     empujaba la fila: el último ícono quedaba pegado al borde / afuera de la pantalla. */
+  .search-field { position: relative; flex: 1 1 0; width: 0; display: flex; min-width: 0; }
+  .search-field:has(> input.hidden) { display: none; } /* el buscador de Movimientos se pliega */
+  .search-field > input { flex: 1 1 0; width: 0; min-width: 0; padding-right: 38px !important; }
+  .search-row .view-toggle-group { flex-shrink: 0; }
+  .historico-filters .search-field { flex: none; width: 100%; } /* ahí es una columna: ocupa todo el ancho */
+  .clear-x {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none;
+    width: 26px; height: 26px; padding: 0; border-radius: 50%; background: var(--card-2);
+    color: var(--muted); font-size: 20px; line-height: 1; font-weight: 400;
+    align-items: center; justify-content: center;
+  }
+  .search-field > input:not(:placeholder-shown) ~ .clear-x { display: flex; }
+
   /* Los nombres de categoría se muestran SIEMPRE en MAYÚSCULAS (pedido del usuario: había
      "HOGAR Extra", "Por Cobrar", "DEPTO Rio IV" mezclados). Solo es de visualización: en la
      base se guardan tal cual, así que no cambia ninguna búsqueda ni comparación. */
@@ -338,6 +372,15 @@
   .amount-display-sm.pos { color: var(--green); }
   .amount-display-sm.neg { color: var(--red); }
   .amount-display-sm.active-target { border-color: var(--accent); }
+  /* Cursor del monto (parpadea solo en el campo activo) y puntos de miles decorativos. */
+  .acaret {
+    display: inline-block; width: 0; height: 1em; vertical-align: text-bottom; margin: 0 -1px;
+    border-left: 2px solid var(--accent); animation: caret-blink 1s steps(1) infinite;
+  }
+  @keyframes caret-blink { 50% { opacity: 0; } }
+  .amount-display:not(.active-target) .acaret, .monto-usd-display:not(.active) .acaret { display: none; }
+  .asep { pointer-events: none; }
+  .amount-display, .monto-usd-display { cursor: text; user-select: none; -webkit-user-select: none; }
   .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 32px; }
   .keypad .key {
     padding: 11px 0; background: var(--card-2); color: var(--text); border: 1px solid var(--border);
@@ -498,6 +541,8 @@
 </style>
 </head>
 <body>
+<div class="env-banner top">ENTORNO DE TEST</div>
+<div class="env-banner bottom">ENTORNO DE TEST</div>
 <div id="app">
 
   <!-- LOGIN -->
@@ -540,7 +585,10 @@
 
       <div class="search-row">
         <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
-        <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
+        <div class="search-field">
+          <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
+          <button type="button" class="clear-x" data-clear="searchInput" aria-label="Limpiar búsqueda">×</button>
+        </div>
         <div class="view-toggle-group">
           <!-- Histórico de Monefy: a la izquierda del $; oculto hasta que exista la tabla y tenga filas para este usuario -->
           <button type="button" id="openHistorico" class="icon-btn resumen-icon hidden" title="Histórico de Monefy"><i data-lucide="history"></i></button>
@@ -607,7 +655,10 @@
             </select>
             <select id="histCat"><option value="">CATEGORÍA: TODAS</option></select>
           </div>
-          <input type="text" id="histSearch" placeholder="Buscar en el histórico (ej: Aguas, Epe)...">
+          <div class="search-field">
+            <input type="text" id="histSearch" placeholder="Buscar en el histórico (ej: Aguas, Epe)...">
+            <button type="button" class="clear-x" data-clear="histSearch" aria-label="Limpiar búsqueda">×</button>
+          </div>
         </div>
         <div class="section-title" id="histTitle">Histórico de Monefy</div>
         </div>
@@ -805,6 +856,11 @@ const SUPABASE_URL = 'https://qqttdzxcamszgrbjrnnr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdHRkenhjYW1zemdyYmpybm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjQzODcsImV4cCI6MjEwMDY0MDM4N30.rgK8c1qa-VZt5tto3M1oLddYaOIe2_NdX0NMQDDAVEw';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Entorno de TEST = proyecto Supabase finanzas-test (ref fmoschhhpirgzcggxsnf): muestra los
+// banners. Se decide por la URL de la base y no por un flag, así no hay nada que cambiar a
+// mano al copiar TEST → PROD.
+if (SUPABASE_URL.includes('fmoschhhpirgzcggxsnf')) document.body.classList.add('env-test');
+
 let currentTipo = 'ingreso'; // tipo del movimiento que se está creando
 let manageCatTipo = 'ingreso'; // tipo elegido en el form de la sección Categorías
 let manageCatIcono = 'tag'; // ícono elegido en el form de la sección Categorías
@@ -813,6 +869,10 @@ let descripcionesFrecuentes = [];
 let descManageCategoriaId = null; // categoría cuyas descripciones precargadas se están gestionando en el modal dedicado
 let montoStr = '0'; // monto que se va tipeando en el teclado numérico
 let montoUsdStr = '0'; // monto en U$D (AHORROS), se tipea con el mismo teclado
+// Posición del cursor dentro de cada monto (0 = antes del primer carácter, length = al final).
+// Permite corregir un dígito del medio sin borrar el resto (tocando el dígito o con ←/→).
+let montoCur = 1;
+let montoUsdCur = 1;
 let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' — a cuál de los dos escribe el teclado
 let currentMovs = []; // últimos movimientos cargados (para abrir edición sin re-consultar)
 let editingMovId = null; // id del movimiento en edición (null = alta nueva)
@@ -1070,6 +1130,7 @@ function updateMontoUsdVisibility() {
   document.getElementById('movDescripcion').classList.toggle('with-usd-field', show);
   if (!show) {
     montoUsdStr = '0';
+    montoUsdCur = 1;
     if (activeAmountTarget === 'usd') activeAmountTarget = 'main';
   } else if (wasHidden) {
     activeAmountTarget = 'usd'; // recién aparece: el teclado salta directo a cargar los U$D
@@ -1140,13 +1201,17 @@ document.getElementById('esRetiroAhorro').addEventListener('change', renderAmoun
 
 // Tocar cualquiera de los dos visores de monto trae de vuelta el teclado numérico si
 // estaba plegado por haber escrito la descripción (ver el listener de #movDescripcion).
-document.getElementById('movMontoUsd').addEventListener('click', () => {
+// Además, el toque sobre un dígito ubica el cursor ahí (mitad izquierda → antes, derecha →
+// después); un toque fuera de los dígitos lo deja al final, como siempre.
+document.getElementById('movMontoUsd').addEventListener('click', (e) => {
   activeAmountTarget = 'usd';
+  montoUsdCur = cursorDesdeToque(document.getElementById('movMontoUsd'), e.clientX, montoUsdStr);
   keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
-document.getElementById('amountDisplay').addEventListener('click', () => {
+document.getElementById('amountDisplay').addEventListener('click', (e) => {
   activeAmountTarget = 'main';
+  montoCur = cursorDesdeToque(document.getElementById('amountDisplay'), e.clientX, montoStr);
   keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
@@ -1586,16 +1651,46 @@ function formatMontoDisplay(str) {
   return decPart !== undefined ? withDots + ',' + decPart : withDots;
 }
 
+// Dibuja el monto con puntos de miles, un <span> por carácter real (data-i = posición en el
+// texto crudo, sin puntos) y el cursor en su lugar. Los puntos de miles son solo decoración.
+function montoHtml(str, cur) {
+  const ent = str.includes(',') ? str.slice(0, str.indexOf(',')) : str;
+  let html = '';
+  const caret = '<span class="acaret"></span>';
+  for (let i = 0; i < str.length; i++) {
+    if (i < ent.length && i > 0 && (ent.length - i) % 3 === 0) html += '<span class="asep">.</span>';
+    if (i === cur) html += caret;
+    html += `<span class="ach" data-i="${i}">${str[i]}</span>`;
+  }
+  if (cur >= str.length) html += caret;
+  return html;
+}
+
+// Posición del cursor según dónde se tocó/clickeó: sobre un dígito → antes o después según
+// la mitad; fuera de los dígitos → al final (comportamiento de siempre al cargar un monto).
+function cursorDesdeToque(el, x, str) {
+  const spans = [...el.querySelectorAll('.ach')];
+  if (!spans.length) return str.length;
+  const primero = spans[0].getBoundingClientRect();
+  const ultimo = spans[spans.length - 1].getBoundingClientRect();
+  if (x < primero.left - 4 || x > ultimo.right + 4) return str.length;
+  for (const s of spans) {
+    const r = s.getBoundingClientRect();
+    if (x < r.left + r.width / 2) return Number(s.dataset.i);
+  }
+  return str.length;
+}
+
 function renderAmountDisplay() {
   const el = document.getElementById('amountDisplay');
-  el.textContent = formatMontoDisplay(montoStr);
+  el.innerHTML = montoHtml(montoStr, montoCur);
   // Un Retiro de AHORROS libera saldo: se ve verde igual que en la lista de Movimientos.
   const esRetiro = document.getElementById('esRetiroAhorro').checked;
   el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' || esRetiro ? 'pos' : 'neg')
     + (activeAmountTarget === 'main' ? ' active-target' : '');
 
   const usdBtn = document.getElementById('movMontoUsd');
-  usdBtn.textContent = formatMontoDisplay(montoUsdStr);
+  usdBtn.innerHTML = montoHtml(montoUsdStr, montoUsdCur);
   usdBtn.classList.toggle('active', activeAmountTarget === 'usd');
 }
 
@@ -1607,6 +1702,8 @@ function openModal(tipo) {
   document.getElementById('cancelMov').textContent = 'Cancelar';
   montoStr = '0';
   montoUsdStr = '0';
+  montoCur = 1;
+  montoUsdCur = 1;
   activeAmountTarget = 'main';
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
@@ -1633,6 +1730,8 @@ function openEditMovModal(mov) {
   document.getElementById('cancelMov').textContent = 'Cancelar'; // antes decía "Atrás" desde Categorías/Ahorros, pero hacía lo mismo que Cancelar
   montoStr = String(mov.monto).replace('.', ',');
   montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
+  montoCur = montoStr.length;       // al editar, el cursor arranca al final y se puede mover
+  montoUsdCur = montoUsdStr.length; // tocando un dígito o con las flechas
   activeAmountTarget = 'main';
   document.getElementById('movMontoUsd').classList.add('hidden'); // fuerza a updateMontoUsdVisibility a re-evaluar
   renderAmountDisplay();
@@ -1657,17 +1756,39 @@ function openEditMovModal(mov) {
   movModal.classList.remove('hidden');
 }
 
+// Teclas: dígitos, ',', 'back' (borra el carácter ANTES del cursor), 'del' (el de DESPUÉS) y
+// 'left' / 'right' / 'home' / 'end' para mover el cursor. Con el cursor al final se comporta
+// igual que siempre; en el medio inserta/borra ahí sin tocar el resto del número.
 function pressKey(key) {
   const isUsd = activeAmountTarget === 'usd';
   let str = isUsd ? montoUsdStr : montoStr;
-  if (key === 'back') {
-    str = str.length > 1 ? str.slice(0, -1) : '0';
-  } else if (key === ',') {
-    if (!str.includes(',')) str += ',';
-  } else {
-    str = str === '0' ? key : str + key;
+  let cur = Math.max(0, Math.min(isUsd ? montoUsdCur : montoCur, str.length));
+
+  if (key === 'left') cur = Math.max(0, cur - 1);
+  else if (key === 'right') cur = Math.min(str.length, cur + 1);
+  else if (key === 'home') cur = 0;
+  else if (key === 'end') cur = str.length;
+  else if (key === 'back') { if (cur > 0) { str = str.slice(0, cur - 1) + str.slice(cur); cur--; } }
+  else if (key === 'del') { if (cur < str.length) str = str.slice(0, cur) + str.slice(cur + 1); }
+  else if (key === ',') { if (!str.includes(',')) { str = str.slice(0, cur) + ',' + str.slice(cur); cur++; } }
+  else if (str === '0') { str = key; cur = 1; }              // el 0 inicial se pisa
+  else { str = str.slice(0, cur) + key + str.slice(cur); cur++; }
+
+  // Normalizar: nunca vacío y "0," en vez de ",".
+  if (str === '') { str = '0'; cur = 1; }
+  if (str[0] === ',') { str = '0' + str; cur++; }
+  // Ceros a la izquierda ("007" → "7"): se limpian solo cuando el cursor ya salió de ellos.
+  // Mientras se está editando ahí se conservan: al cambiar el 1 de "1.000.000" por un 9, tras
+  // borrar el 1 quedan los ceros y si se colapsaran se perdería el resto del número.
+  let z = 0;
+  while (z < str.length && str[z] === '0') z++;
+  if (z > 0 && str[z] !== ',') {
+    if (z === str.length) { if (cur >= str.length) { str = '0'; cur = 1; } }
+    else if (cur > z) { str = str.slice(z); cur -= z; }
   }
-  if (isUsd) montoUsdStr = str; else montoStr = str;
+  cur = Math.max(0, Math.min(cur, str.length));
+
+  if (isUsd) { montoUsdStr = str; montoUsdCur = cur; } else { montoStr = str; montoCur = cur; }
   renderAmountDisplay();
 }
 
@@ -1686,7 +1807,12 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'input' || tag === 'textarea') return;
   if (e.key >= '0' && e.key <= '9') { pressKey(e.key); e.preventDefault(); }
   else if (e.key === ',' || e.key === '.') { pressKey(','); e.preventDefault(); }
-  else if (e.key === 'Backspace' || e.key === 'Delete') { pressKey('back'); e.preventDefault(); }
+  else if (e.key === 'Backspace') { pressKey('back'); e.preventDefault(); }
+  else if (e.key === 'Delete') { pressKey('del'); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { pressKey('left'); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { pressKey('right'); e.preventDefault(); }
+  else if (e.key === 'Home') { pressKey('home'); e.preventDefault(); }
+  else if (e.key === 'End') { pressKey('end'); e.preventDefault(); }
 });
 
 document.getElementById('openIngreso').addEventListener('click', () => openModal('ingreso'));
@@ -2873,6 +2999,18 @@ document.getElementById('confirmImport').addEventListener('click', async () => {
   renderCategoriaOptions();
   await refreshCurrentView();
   alert(`Se importaron ${movsAInsertar.length} movimiento(s), ${catsACrear.size} categoría(s) nueva(s) y ${descsACrear.size} descripción(es) nueva(s).`);
+});
+
+// ---------- "×" para limpiar los buscadores ----------
+// Vacía el campo y avisa con un evento "input", así cada buscador reacciona como si el
+// usuario hubiera borrado el texto a mano (recarga la lista completa).
+document.querySelectorAll('.clear-x').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const inp = document.getElementById(btn.dataset.clear);
+    inp.value = '';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.focus();
+  });
 });
 
 // ---------- Cerrar modales con Esc / tocando afuera ----------
