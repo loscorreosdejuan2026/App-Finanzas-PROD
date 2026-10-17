@@ -83,19 +83,26 @@
   header .logout { background: none; color: var(--muted); font-size: 13px; font-weight: 400; }
 
   .period-selector {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     padding: 1px 20px 0;
   }
-  .period-nav { display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; }
+  /* display: contents → flecha, fecha, flecha, selector y Hoy son hermanos en una sola fila:
+     ‹ [fecha, ocupa lo que sobra] › [Mes] [Hoy] */
+  .period-nav { display: contents; }
   .period-arrow {
     /* círculo intencional (única excepción a la escala de radios) — ‹ › leen mejor redondos */
-    background: var(--card); color: var(--text); width: 36px; height: 36px; border-radius: 50%;
+    background: var(--card); color: var(--text); width: 36px; height: 36px; border-radius: 50%; flex: none;
     font-size: 18px; display: flex; align-items: center; justify-content: center; padding: 0;
   }
-  .period-label { font-size: 16px; font-weight: 600; min-width: 130px; text-align: center; }
+  .period-label { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; text-align: center; white-space: nowrap; }
   .period-mode-select {
-    padding: 7px 10px; border-radius: var(--radius-md); background: var(--card); color: var(--text);
-    border: 1px solid var(--border); font-size: 13px; font-weight: 600;
+    width: 92px; height: 36px; flex: none; padding: 0 8px; border-radius: var(--radius-md); background: var(--card); color: var(--text);
+    border: 1px solid var(--border); font-size: 15px; font-weight: 600;
+  }
+  .period-today {
+    width: 76px; height: 36px; flex: none; padding: 0; text-align: center;
+    border-radius: var(--radius-md); background: var(--card); color: var(--accent);
+    border: 1px solid var(--border); font-size: 15px; font-weight: 600;
   }
 
   .balance-card {
@@ -193,6 +200,28 @@
   .mov-item .date { font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }
   .mov-item .amt.pos { color: var(--green); }
   .mov-item .amt.neg { color: var(--red); }
+
+  /* Los nombres de categoría se muestran SIEMPRE en MAYÚSCULAS (pedido del usuario: había
+     "HOGAR Extra", "Por Cobrar", "DEPTO Rio IV" mezclados). Solo es de visualización: en la
+     base se guardan tal cual, así que no cambia ninguna búsqueda ni comparación. */
+  .cat-tile .name, .mov-item .cat, .resumen-row-main .name, .cat-card-main .name,
+  .cat-select-label { text-transform: uppercase; }
+
+  /* Vista Histórico (Monefy): mismas fichas que Movimientos, solo lectura. */
+  /* Filtros + título quedan FIJOS arriba; solo la lista de resultados se desplaza, con su
+     propia barra (más corta: arranca debajo de los filtros, no al lado de ellos). */
+  .scroll-area.hist-mode { overflow: hidden; display: flex; flex-direction: column; }
+  #historicoView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .historico-sticky { flex: none; background: var(--bg); padding-top: 2px; padding-bottom: 2px; }
+  #histScroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .historico-filters { padding: 0 20px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .historico-filters input { padding: 10px 14px; font-size: 15px; }
+  .historico-selects { display: flex; gap: 8px; }
+  .historico-selects select { flex: 1; min-width: 0; padding: 9px 8px; font-size: 13px; }
+  #histList { padding: 0 20px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .hist-item { cursor: default; }
+  .hist-orig { color: var(--muted); font-weight: 400; font-size: var(--fs-meta); }
+  #histMore { margin: 0 20px 100px; width: calc(100% - 40px); padding: 12px; }
 
   /* Agrupación por día dentro de Movimientos (mismo patrón visual que .resumen-row:
      chevron que gira + globito de cantidad + total a la derecha). */
@@ -513,6 +542,8 @@
         <button type="button" id="searchToggle" class="icon-btn"><i data-lucide="search"></i></button>
         <input type="text" id="searchInput" placeholder="Buscar por descripción..." class="hidden">
         <div class="view-toggle-group">
+          <!-- Histórico de Monefy: a la izquierda del $; oculto hasta que exista la tabla y tenga filas para este usuario -->
+          <button type="button" id="openHistorico" class="icon-btn resumen-icon hidden" title="Histórico de Monefy"><i data-lucide="history"></i></button>
           <button type="button" id="openAhorros" class="icon-btn resumen-icon"><i data-lucide="dollar-sign"></i></button>
           <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
           <button type="button" id="openMovimientos" class="icon-btn resumen-icon active"><i data-lucide="list"></i></button>
@@ -530,6 +561,7 @@
           <option value="month" selected>Mes</option>
           <option value="year">Año</option>
         </select>
+        <button class="period-today" id="todayPeriod">Hoy</button>
       </div>
 
       <div class="balance-card">
@@ -563,6 +595,26 @@
       </div>
       <div id="ahorrosView" class="hidden">
         <div id="ahorrosContent"></div>
+      </div>
+      <div id="historicoView" class="hidden">
+        <div class="historico-sticky">
+        <div class="historico-filters">
+          <div class="historico-selects">
+            <select id="histTipo">
+              <option value="">TIPO: TODOS</option>
+              <option value="egreso">GASTOS</option>
+              <option value="ingreso">INGRESOS</option>
+            </select>
+            <select id="histCat"><option value="">CATEGORÍA: TODAS</option></select>
+          </div>
+          <input type="text" id="histSearch" placeholder="Buscar en el histórico (ej: Aguas, Epe)...">
+        </div>
+        <div class="section-title" id="histTitle">Histórico de Monefy</div>
+        </div>
+        <div id="histScroll">
+          <div id="histList"></div>
+          <button type="button" class="btn-secondary hidden" id="histMore">Ver más</button>
+        </div>
       </div>
     </div>
   </div>
@@ -807,7 +859,31 @@ let periodYear = today.getFullYear();
 let periodMonth = today.getMonth(); // 0-indexado
 let periodDay = today.getDate();
 
-const fmt = (n) => '$' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// Negativos con el signo adelante del "$" (−$32.000) y no "$-32.000", que se lee mal.
+const fmt = (n) => {
+  const v = Number(n);
+  const s = '$' + Math.abs(v).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return v < 0 ? '−' + s : s;
+};
+// Montos en dólares (apartados de Ahorros en U$D): nunca con el "$" de pesos.
+const fmtUsd = (n) => {
+  const v = Number(n);
+  const s = 'U$D ' + Math.abs(v).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return v < 0 ? '−' + s : s;
+};
+
+// Escapa texto del usuario antes de meterlo en innerHTML o en un atributo: sin esto una
+// descripción con comillas (Pizza 12" grande) cortaba el atributo data-texto y quedaba
+// cargada solo "Pizza 12", y un "<" rompía el HTML.
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// Fecha de HOY en hora local (YYYY-MM-DD). toISOString() da la fecha UTC: en Argentina
+// (UTC-3), pasadas las 21:00 devolvía el día siguiente.
+function hoyLocalISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function getPeriodRange() {
   if (periodMode === 'year') {
@@ -845,8 +921,13 @@ async function refreshBalance() {
 }
 
 function refreshCurrentView() {
+  if (inHistoricoView) return loadHistorico(true);
   if (inResumenView) { refreshBalance(); return loadResumen(); }
   if (inAhorrosView) { refreshBalance(); return loadAhorros(); }
+  // Con una búsqueda activa, la lista tiene que seguir siendo la de la búsqueda (si no,
+  // volvía a mostrar el mes entero mientras el buscador seguía con el texto escrito).
+  const textoBusqueda = searchInputEl.value.trim();
+  if (textoBusqueda) { refreshBalance(); return runSearch(textoBusqueda); }
   return loadMovimientos();
 }
 
@@ -866,6 +947,14 @@ document.getElementById('nextPeriod').addEventListener('click', () => {
     const d = new Date(periodYear, periodMonth, periodDay + 1);
     periodYear = d.getFullYear(); periodMonth = d.getMonth(); periodDay = d.getDate();
   } else { periodMonth++; if (periodMonth > 11) { periodMonth = 0; periodYear++; } }
+  renderPeriodLabel();
+  refreshCurrentView();
+});
+
+// "Hoy": vuelve a la fecha actual manteniendo el modo (Día/Mes/Año) elegido.
+document.getElementById('todayPeriod').addEventListener('click', () => {
+  const now = new Date();
+  periodYear = now.getFullYear(); periodMonth = now.getMonth(); periodDay = now.getDate();
   renderPeriodLabel();
   refreshCurrentView();
 });
@@ -911,6 +1000,7 @@ async function initData() {
   await loadCategorias();
   await loadDescripcionesFrecuentes();
   await loadMovimientos();
+  checkHistorico(); // sin await: solo decide si se muestra el botón del Histórico
 }
 
 async function loadCategorias() {
@@ -952,7 +1042,7 @@ function renderCategoriaOptions() {
   const tiles = filtered.map(c => `
     <button type="button" class="cat-tile ${c.id === selectedCategoriaId ? 'selected' : ''}" data-id="${c.id}">
       <div class="badge icon-badge lg" style="background:${colorOf(c)}">${iconSvg(c.icono || 'tag')}</div>
-      <div class="name">${c.nombre}</div>
+      <div class="name">${esc(c.nombre)}</div>
     </button>`).join('');
   grid.innerHTML = tiles + `
     <button type="button" class="cat-tile add-tile" id="toggleNewCat">
@@ -1003,7 +1093,7 @@ function updateCatSelectDisplay() {
   btn.classList.remove('placeholder');
   btn.innerHTML = `
     <div class="cat-select-icon icon-badge sm" style="background:${colorOf(cat)}">${iconSvg(cat.icono || 'tag')}</div>
-    <span class="cat-select-label" id="catSelectLabel">${cat.nombre}</span>`;
+    <span class="cat-select-label" id="catSelectLabel">${esc(cat.nombre)}</span>`;
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1035,7 +1125,7 @@ function renderDescSuggestions() {
   const row = document.getElementById('descSuggestRow');
   const sugerencias = descripcionesFrecuentes.filter(d => d.categoria_id === selectedCategoriaId);
   row.innerHTML = sugerencias.map(d => `
-    <button type="button" class="desc-suggest-chip" data-texto="${d.texto}">${d.texto}</button>`).join('');
+    <button type="button" class="desc-suggest-chip" data-texto="${esc(d.texto)}">${esc(d.texto)}</button>`).join('');
 }
 
 document.getElementById('descSuggestRow').addEventListener('click', (e) => {
@@ -1046,6 +1136,7 @@ document.getElementById('descSuggestRow').addEventListener('click', (e) => {
 });
 
 document.getElementById('movDescripcion').addEventListener('input', updateMontoUsdVisibility);
+document.getElementById('esRetiroAhorro').addEventListener('change', renderAmountDisplay);
 
 // Tocar cualquiera de los dos visores de monto trae de vuelta el teclado numérico si
 // estaba plegado por haber escrito la descripción (ver el listener de #movDescripcion).
@@ -1120,15 +1211,18 @@ async function exportMovimientosCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('fecha, monto, descripcion, categorias(nombre, tipo)')
+    .select('fecha, monto, descripcion, es_retiro, es_retiro_extra, categorias(nombre, tipo)')
     .gte('fecha', start)
     .lte('fecha', end)
     .order('fecha', { ascending: true });
   if (error) { console.error(error); return; }
 
-  const filas = (data || []).map(m => {
+  // Mismo criterio que el Saldo de la pantalla: un Retiro Extra no cuenta (es del pozo de
+  // Ahorros) y un Retiro de AHORROS libera saldo, o sea que suma en vez de restar. Así la
+  // columna Monto del CSV da el mismo saldo que se ve en la app.
+  const filas = (data || []).filter(m => !m.es_retiro_extra).map(m => {
     const tipo = m.categorias ? m.categorias.tipo : null;
-    const signo = tipo === 'egreso' ? -1 : 1;
+    const signo = (tipo === 'egreso' && !m.es_retiro) ? -1 : 1;
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR');
     const tipoStr = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
@@ -1200,7 +1294,7 @@ function exportDescFrecuentesCSV() {
     }
   }
 
-  const hoy = new Date().toISOString().slice(0, 10).split('-').reverse().join('-');
+  const hoy = hoyLocalISO().split('-').reverse().join('-');
   descargarCSV(`descripciones_${hoy}_${horaFilenameSlug()}.csv`, ['Tipo', 'Categoría', 'Descripción'], filas);
 }
 
@@ -1272,8 +1366,8 @@ function movItemHtml(m) {
       <button type="button" class="mov-item" data-id="${m.id}">
         <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
         <div class="mid">
-          <div class="cat">${catName}</div>
-          ${m.descripcion ? `<div class="desc">${m.descripcion}${m.monto_usd != null ? ' · U$D ' + Number(m.monto_usd).toLocaleString('es-AR') : ''}</div>` : ''}
+          <div class="cat">${esc(catName)}</div>
+          ${m.descripcion ? `<div class="desc">${esc(m.descripcion)}${m.monto_usd != null ? ' · U$D ' + Number(m.monto_usd).toLocaleString('es-AR') : ''}</div>` : ''}
         </div>
         <div class="right">
           <div class="amt ${cls}">${sign} ${fmt(m.monto)}</div>
@@ -1388,7 +1482,7 @@ async function runSearch(text) {
   const { data, error } = await sb
     .from('movimientos')
     .select('*, categorias(id, nombre, tipo, icono, color)')
-    .ilike('descripcion', `%${text}%`)
+    .ilike('descripcion', `%${text.replace(/[\\%_]/g, '\\$&')}%`) // % y _ se buscan literales, no como comodín
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
@@ -1495,7 +1589,9 @@ function formatMontoDisplay(str) {
 function renderAmountDisplay() {
   const el = document.getElementById('amountDisplay');
   el.textContent = formatMontoDisplay(montoStr);
-  el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' ? 'pos' : 'neg')
+  // Un Retiro de AHORROS libera saldo: se ve verde igual que en la lista de Movimientos.
+  const esRetiro = document.getElementById('esRetiroAhorro').checked;
+  el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' || esRetiro ? 'pos' : 'neg')
     + (activeAmountTarget === 'main' ? ' active-target' : '');
 
   const usdBtn = document.getElementById('movMontoUsd');
@@ -1516,7 +1612,7 @@ function openModal(tipo) {
   document.getElementById('movDescripcion').value = '';
   document.getElementById('saveAsFreqDesc').checked = false;
   keypadField.classList.remove('hidden'); // por si el modal anterior se cerró escribiendo la descripción
-  movFechaInput.value = new Date().toISOString().slice(0, 10);
+  movFechaInput.value = hoyLocalISO();
   updateFechaPill();
   movError.textContent = '';
   catStepError.textContent = '';
@@ -1534,7 +1630,7 @@ function openEditMovModal(mov) {
   editingMovId = mov.id;
   selectedCategoriaId = mov.categoria_id;
   modalTitle.textContent = currentTipo === 'ingreso' ? 'Editar ingreso' : 'Editar gasto';
-  document.getElementById('cancelMov').textContent = (inResumenView || inAhorrosView) ? 'Atrás' : 'Cancelar';
+  document.getElementById('cancelMov').textContent = 'Cancelar'; // antes decía "Atrás" desde Categorías/Ahorros, pero hacía lo mismo que Cancelar
   montoStr = String(mov.monto).replace('.', ',');
   montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
   activeAmountTarget = 'main';
@@ -1550,7 +1646,11 @@ function openEditMovModal(mov) {
   newCatForm.classList.remove('show');
   deleteMovBtn.classList.remove('hidden');
   updateCatSelectDisplay();
+  // updateCatSelectDisplay() manda el teclado al campo U$D cuando aparece (útil al CARGAR);
+  // al editar se abre apuntando a los pesos, que es lo que se suele corregir.
+  activeAmountTarget = 'main';
   document.getElementById('esRetiroAhorro').checked = !!mov.es_retiro;
+  renderAmountDisplay();
   renderDescSuggestions();
   stepMonto.classList.remove('hidden');
   stepCategoria.classList.add('hidden');
@@ -1737,7 +1837,7 @@ function renderCatManageLists() {
         <div class="cat-card">
           <button type="button" class="cat-card-main" data-id="${c.id}">
             <div class="badge icon-badge sm" style="background:${colorOf(c)}">${iconSvg(c.icono || 'tag')}</div>
-            <div class="name">${c.nombre}</div>
+            <div class="name">${esc(c.nombre)}</div>
           </button>
           <button type="button" class="desc-badge ${count ? 'has-items' : ''}" data-id="${c.id}" title="Descripciones precargadas">${count}</button>
           <div class="cat-card-reorder">
@@ -1844,7 +1944,7 @@ function renderIconGrid() {
     const style = usedCat ? ` style="background:${colorOf(usedCat)}"` : '';
     return `
     <button type="button" class="icon-opt ${selected ? 'selected' : ''} ${usedCat ? 'used' : ''}"
-      data-icon="${name}" ${usedCat ? `disabled title="Ya la usa ${usedCat.nombre}"` : ''}${style}>
+      data-icon="${name}" ${usedCat ? `disabled title="Ya la usa ${esc(usedCat.nombre)}"` : ''}${style}>
       ${iconSvg(name)}
     </button>`;
   }).join('');
@@ -1938,7 +2038,7 @@ function renderDescManageList() {
   const el = document.getElementById('descList');
   el.innerHTML = list.length ? list.map((d, i) => `
     <div class="desc-row">
-      <div class="name">${d.texto}</div>
+      <div class="name">${esc(d.texto)}</div>
       <button type="button" class="reorder-btn" data-id="${d.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
       <button type="button" class="reorder-btn" data-id="${d.id}" data-dir="1" ${i === list.length - 1 ? 'disabled' : ''}>▼</button>
       <button type="button" class="desc-delete btn-icon-danger sm" data-id="${d.id}"><i data-lucide="trash-2"></i></button>
@@ -2005,9 +2105,24 @@ const openAhorrosBtn = document.getElementById('openAhorros');
 const openMovimientosBtn = document.getElementById('openMovimientos');
 let inResumenView = false;
 let inAhorrosView = false;
+let inHistoricoView = false;
 let resumenMovsById = {}; // para poder editar un movimiento tocado desde el detalle desplegado
 
+// Al salir del Histórico se vuelve a mostrar el selector de período y la tarjeta de Saldo
+// del mes (en el Histórico se ocultan: ahí no hay período ni saldos, solo fichas).
+const historicoView = document.getElementById('historicoView');
+const openHistoricoBtn = document.getElementById('openHistorico');
+function leaveHistorico() {
+  inHistoricoView = false;
+  document.querySelector('.scroll-area').classList.remove('hist-mode');
+  historicoView.classList.add('hidden');
+  openHistoricoBtn.classList.remove('active');
+  document.querySelector('.period-selector').classList.remove('hidden');
+  document.querySelector('.balance-card').classList.remove('hidden');
+}
+
 function showMovView() {
+  leaveHistorico();
   resumenView.classList.add('hidden');
   ahorrosView.classList.add('hidden');
   movView.classList.remove('hidden');
@@ -2028,6 +2143,7 @@ function hideSearchForOtherView() {
 }
 
 async function showResumenView() {
+  leaveHistorico();
   await loadResumen();
   movView.classList.add('hidden');
   ahorrosView.classList.add('hidden');
@@ -2042,6 +2158,7 @@ async function showResumenView() {
 }
 
 async function showAhorrosView() {
+  leaveHistorico();
   await loadAhorros();
   movView.classList.add('hidden');
   resumenView.classList.add('hidden');
@@ -2063,6 +2180,137 @@ openAhorrosBtn.addEventListener('click', () => {
 });
 
 openMovimientosBtn.addEventListener('click', showMovView);
+
+// ---------- Vista: Histórico de Monefy (solo lectura, tabla historial_monefy) ----------
+// Sirve para saber CUÁNDO se hizo un gasto/ingreso puntual en la app vieja. No hay saldos
+// ni totales: solo fichas iguales a las de Movimientos. Vive en una tabla aparte, así que
+// no toca Saldo, Resumen ni Ahorros. El botón solo aparece si este usuario tiene filas.
+const HIST_PAGE = 100;
+// Categorías "de hoy" a las que se mapeó el histórico (ver cargar_historial_monefy.js).
+// Todo en MAYÚSCULAS (pedido del usuario: no mezclar "HOGAR Extra", "Por Cobrar", etc.).
+const HIST_CAT_EGRESO = [
+  'AHORROS', 'AUTO', 'DEPTO RIO IV', 'EXTRAS', 'FORMACION', 'GANANCIAS', 'HIG Y SALUD', 'HOGAR',
+  'HOGAR EXTRA', 'MASCOTAS', 'MERCADERIAS', 'MOTO', 'REGALOS', 'ROPA', 'SALIDAS',
+  'TARJETAS', 'VIAJES'
+]; // M_PAGO se sacó: las 2 filas de MercPAGO se reclasificaron a mano (Ahorros / Hogar) el 17/10/2026
+const HIST_CAT_INGRESO = [
+  'AJUSTE HOGAR', 'DEPTO RIO IV', 'INTERESES', 'POR COBRAR', 'SALDO MES', 'SUELDO', 'TARJETAS', 'VENTAS'
+];
+let histOffset = 0;    // próxima fila a pedir
+let histRequest = 0;   // descarta respuestas viejas si se tipea rápido
+
+async function checkHistorico() {
+  const { count, error } = await sb.from('historial_monefy').select('id', { count: 'exact', head: true });
+  openHistoricoBtn.classList.toggle('hidden', !!error || !count);
+}
+
+// Las categorías del selector dependen del Tipo elegido (Gastos / Ingresos / todos).
+// "Todos" junta las dos listas sin repetir (DEPTO Rio IV / RIO IV cuentan como una).
+function llenarCategoriasHistorico() {
+  const tipo = document.getElementById('histTipo').value;
+  const lista = tipo === 'egreso' ? HIST_CAT_EGRESO : tipo === 'ingreso' ? HIST_CAT_INGRESO
+    : [...new Map([...HIST_CAT_EGRESO, ...HIST_CAT_INGRESO].map(c => [c.toLowerCase(), c])).values()]
+        .sort((a, b) => a.localeCompare(b));
+  document.getElementById('histCat').innerHTML = '<option value="">CATEGORÍA: TODAS</option>'
+    + lista.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+}
+
+function histItemHtml(r) {
+  // Ícono y color: los de la categoría actual con ese nombre/tipo; si ya no existe, genérico.
+  const hoy = categorias.find(c => c.tipo === r.tipo && c.nombre.toLowerCase() === r.categoria_hoy.toLowerCase());
+  const bg = hoy ? colorOf(hoy) : '#5b6169';
+  const icono = hoy ? (hoy.icono || 'tag') : 'tag';
+  const cls = r.tipo === 'ingreso' ? 'pos' : 'neg';
+  const sign = r.tipo === 'ingreso' ? '+' : '−';
+  const fecha = new Date(r.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+  const orig = r.categoria_original && r.categoria_original.toLowerCase() !== r.categoria_hoy.toLowerCase()
+    ? ` <span class="hist-orig">· ${esc(r.categoria_original.toUpperCase())}</span>` : '';
+  return `
+      <div class="mov-item hist-item">
+        <div class="mov-icon icon-badge" style="background:${bg}">${iconSvg(icono)}</div>
+        <div class="mid">
+          <div class="cat">${esc(r.categoria_hoy.toUpperCase())}${orig}</div>
+          ${r.descripcion ? `<div class="desc">${esc(r.descripcion)}</div>` : ''}
+        </div>
+        <div class="right">
+          <div class="amt ${cls}">${sign} ${fmt(r.monto)}</div>
+          <div class="date ${cls}">${fecha}</div>
+        </div>
+      </div>`;
+}
+
+async function loadHistorico(reset) {
+  const miRequest = ++histRequest;
+  if (reset) histOffset = 0;
+  const texto = document.getElementById('histSearch').value.trim();
+  const tipo = document.getElementById('histTipo').value;
+  const cat = document.getElementById('histCat').value;
+
+  let q = sb.from('historial_monefy').select('*', { count: 'exact' });
+  if (texto) q = q.ilike('descripcion', `%${texto.replace(/[\\%_]/g, '\\$&')}%`);
+  if (tipo) q = q.eq('tipo', tipo);
+  // ilike sin comodines = igualdad sin distinguir mayúsculas (DEPTO Rio IV / RIO IV)
+  if (cat) q = q.ilike('categoria_hoy', cat.replace(/[\\%_]/g, '\\$&'));
+  q = q.order('fecha', { ascending: false }).order('id', { ascending: true })
+    .range(histOffset, histOffset + HIST_PAGE - 1);
+
+  const { data, error, count } = await q;
+  if (miRequest !== histRequest) return; // llegó una búsqueda más nueva
+  const list = document.getElementById('histList');
+  if (error) { console.error(error); list.innerHTML = '<div class="empty-msg">No se pudo cargar el histórico.</div>'; return; }
+
+  const filas = data || [];
+  const html = filas.map(histItemHtml).join('');
+  if (reset) {
+    list.innerHTML = html || '<div class="empty-msg">No se encontraron movimientos con ese filtro.</div>';
+    document.getElementById('histScroll').scrollTop = 0; // búsqueda nueva: arranca desde arriba
+  }
+  else list.insertAdjacentHTML('beforeend', html);
+  histOffset += filas.length;
+  document.getElementById('histTitle').textContent =
+    `Histórico de Monefy · ${count ?? filas.length} resultado${count === 1 ? '' : 's'}`;
+  document.getElementById('histMore').classList.toggle('hidden', histOffset >= (count ?? 0));
+  if (window.lucide) lucide.createIcons();
+}
+
+async function showHistoricoView() {
+  // Cada vez que se abre arranca limpia, para no confundirse con filtros de la vez anterior.
+  document.getElementById('histSearch').value = '';
+  document.getElementById('histTipo').value = '';
+  llenarCategoriasHistorico();
+  movView.classList.add('hidden');
+  resumenView.classList.add('hidden');
+  ahorrosView.classList.add('hidden');
+  historicoView.classList.remove('hidden');
+  document.querySelector('.scroll-area').classList.add('hist-mode');
+  inHistoricoView = true;
+  inResumenView = false;
+  inAhorrosView = false;
+  openHistoricoBtn.classList.add('active');
+  openResumenBtn.classList.remove('active');
+  openAhorrosBtn.classList.remove('active');
+  openMovimientosBtn.classList.remove('active');
+  // Sin período ni saldos del mes: se libera la pantalla para la lista.
+  document.querySelector('.period-selector').classList.add('hidden');
+  document.querySelector('.balance-card').classList.add('hidden');
+  hideSearchForOtherView();
+  await loadHistorico(true);
+}
+
+openHistoricoBtn.addEventListener('click', () => {
+  if (inHistoricoView) showMovView(); else showHistoricoView();
+});
+let histDebounce = null;
+document.getElementById('histSearch').addEventListener('input', () => {
+  clearTimeout(histDebounce);
+  histDebounce = setTimeout(() => loadHistorico(true), 300);
+});
+document.getElementById('histTipo').addEventListener('change', () => {
+  llenarCategoriasHistorico(); // al cambiar el tipo la categoría vuelve a "Todas"
+  loadHistorico(true);
+});
+document.getElementById('histCat').addEventListener('change', () => loadHistorico(true));
+document.getElementById('histMore').addEventListener('click', () => loadHistorico(false));
 
 // Etiqueta de la fila del período activo, según el selector Día/Mes/Año.
 function labelPeriodoAhorros() {
@@ -2172,18 +2420,20 @@ async function loadAhorros() {
     const total = subTotal - t.retiroExtra;
     const conExtra = t.retiroExtra !== 0;
     const extraSorted = t.extras.slice().sort((a, b2) => b2.fecha.localeCompare(a.fecha));
+    // En el apartado de dólares los montos van como "U$D 600", no "$600" (que son pesos).
+    const money = t.moneda === 'usd' ? fmtUsd : fmt;
     return `
       <div class="ahorros-block">
         <div class="section-title-row" style="padding:0 0 8px;">
-          <div class="section-title" style="padding:0; margin:0;">${t.label}</div>
-          <button type="button" class="btn-secondary sm add-retiro-extra-btn" data-label="${t.label}">+ Retiro Extra</button>
+          <div class="section-title" style="padding:0; margin:0;">${esc(t.label)}</div>
+          <button type="button" class="btn-secondary sm add-retiro-extra-btn" data-label="${esc(t.label)}">+ Retiro Extra</button>
         </div>
         <div class="ahorros-rows">
-          <div class="ahorros-row"><div class="l">Ahorrado</div><div class="v">${fmt(t.ahorrado)}</div></div>
-          <div class="ahorros-row"><div class="l">${labelPeriodoAhorros()}</div><div class="v">${fmt(t.periodo)}</div></div>
-          ${conExtra ? `<div class="ahorros-row"><div class="l">Sub Total</div><div class="v">${fmt(subTotal)}</div></div>` : ''}
-          ${conExtra ? `<div class="ahorros-row"><div class="l">Retiro Extra</div><div class="v">− ${fmt(t.retiroExtra)}</div></div>` : ''}
-          <div class="ahorros-row total"><div class="l">Total</div><div class="v">${fmt(total)}</div></div>
+          <div class="ahorros-row"><div class="l">Ahorrado</div><div class="v">${money(t.ahorrado)}</div></div>
+          <div class="ahorros-row"><div class="l">${labelPeriodoAhorros()}</div><div class="v">${money(t.periodo)}</div></div>
+          ${conExtra ? `<div class="ahorros-row"><div class="l">Sub Total</div><div class="v">${money(subTotal)}</div></div>` : ''}
+          ${conExtra ? `<div class="ahorros-row"><div class="l">Retiro Extra</div><div class="v">− ${money(t.retiroExtra)}</div></div>` : ''}
+          <div class="ahorros-row total"><div class="l">Total</div><div class="v">${money(total)}</div></div>
         </div>
         ${conExtra ? `
           <div class="ahorros-extra-list">
@@ -2192,8 +2442,8 @@ async function loadAhorros() {
               return `
                 <button type="button" class="ahorros-extra-item" data-id="${m.id}">
                   <div class="d-fecha">${fecha}</div>
-                  <div class="d-desc">${m.descripcion || '-'}</div>
-                  <div class="d-monto neg">${fmt(m.monto)}</div>
+                  <div class="d-desc">${esc(m.descripcion || '-')}</div>
+                  <div class="d-monto neg">${money(m.monto)}</div>
                 </button>`;
             }).join('')}
           </div>` : ''}
@@ -2233,13 +2483,16 @@ function openRetiroExtraModal(label, mov) {
   retiroExtraLabel = mov ? apartadoDe(mov.descripcion).label : label;
   document.getElementById('retiroExtraTitle').textContent =
     (mov ? 'Editar Retiro Extra — ' : 'Retiro Extra — ') + retiroExtraLabel;
+  // En un apartado de dólares el monto que se tipea son U$D, no pesos.
+  const esUsd = (mov ? apartadoDe(mov.descripcion) : apartadoDe(label)).moneda === 'usd';
+  document.getElementById('retiroExtraMonto').placeholder = esUsd ? 'Monto en U$D' : 'Monto';
   document.getElementById('retiroExtraMonto').value = mov ? formatMontoDisplay(String(mov.monto).replace('.', ',')) : '';
   // Al editar, solo se muestra/edita el texto libre que sigue al apartado (ej. "cocina"
   // en "FCI Pesos - cocina") — el apartado en sí no se toca desde acá.
   const textoLibre = mov ? mov.descripcion.slice(retiroExtraLabel.length).replace(/^\s*-\s*/, '') : '';
   document.getElementById('retiroExtraDescripcion').value = textoLibre;
   // Al dar de alta arranca en hoy; al editar, con la fecha real del movimiento.
-  retiroExtraFechaInput.value = mov ? mov.fecha : new Date().toISOString().slice(0, 10);
+  retiroExtraFechaInput.value = mov ? mov.fecha : hoyLocalISO();
   updateRetiroExtraFechaPill();
   deleteRetiroExtraBtn.classList.toggle('hidden', !mov);
   retiroExtraError.textContent = '';
@@ -2284,7 +2537,8 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
   const descripcion = retiroExtraLabel + (textoExtra ? ' - ' + textoExtra : '');
 
   if (editingRetiroExtraMov) {
-    if (!confirm(`¿Guardar los cambios de este retiro extra (${fmt(monto)})?`)) return;
+    const montoTxt = apartadoDe(retiroExtraLabel).moneda === 'usd' ? fmtUsd(monto) : fmt(monto);
+    if (!confirm(`¿Guardar los cambios de este retiro extra (${montoTxt})?`)) return;
     const { error } = await sb.from('movimientos')
       .update({ monto, descripcion, fecha })
       .eq('id', editingRetiroExtraMov.id);
@@ -2292,7 +2546,8 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
   } else {
     const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
     if (!cat) { retiroExtraError.textContent = 'No se encontró la categoría AHORROS'; return; }
-    if (!confirm(`¿Confirmás el retiro extra de ${fmt(monto)} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
+    const montoTxt = apartadoDe(retiroExtraLabel).moneda === 'usd' ? fmtUsd(monto) : fmt(monto);
+    if (!confirm(`¿Confirmás el retiro extra de ${montoTxt} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
     const { data: userData } = await sb.auth.getUser();
     const { error } = await sb.from('movimientos').insert({
       monto, categoria_id: cat.id, fecha,
@@ -2504,8 +2759,8 @@ function renderImportPreview() {
     if (row.error) {
       return `<div class="import-row error">
         <input type="checkbox" disabled>
-        <div class="i-fecha">${row.fechaRaw || '-'}</div>
-        <div class="i-error">${row.error}</div>
+        <div class="i-fecha">${esc(row.fechaRaw) || '-'}</div>
+        <div class="i-error">${esc(row.error)}</div>
       </div>`;
     }
     const catTag = row.categoriaIsNew ? '<span class="import-tag nueva">nueva</span>' : '';
@@ -2516,7 +2771,7 @@ function renderImportPreview() {
     return `<div class="import-row">
       <input type="checkbox" class="import-check" data-idx="${i}" ${row.isDup ? '' : 'checked'}>
       <div class="i-fecha">${fechaFmt}</div>
-      <div class="i-mid">${row.categoriaNombre}${catTag} · ${row.descripcion || '(sin descripción)'}${descTag}${dupTag}</div>
+      <div class="i-mid">${esc(row.categoriaNombre)}${catTag} · ${esc(row.descripcion) || '(sin descripción)'}${descTag}${dupTag}</div>
       <div class="i-monto ${cls}">${fmt(row.montoAbs)}</div>
     </div>`;
   }).join('');
@@ -2620,6 +2875,39 @@ document.getElementById('confirmImport').addEventListener('click', async () => {
   alert(`Se importaron ${movsAInsertar.length} movimiento(s), ${catsACrear.size} categoría(s) nueva(s) y ${descsACrear.size} descripción(es) nueva(s).`);
 });
 
+// ---------- Cerrar modales con Esc / tocando afuera ----------
+// Esc cierra el modal que esté arriba de todo (los de gestión se apilan sobre
+// "Categorías"). En el de carga, estando en la pantalla de elegir categoría, Esc vuelve a la
+// pantalla de monto en vez de cerrar todo. Tocar afuera solo cierra los modales de gestión:
+// en los de carga de datos un toque suelto perdería lo que se tipeó.
+const MODALES_CIERRE = [
+  ['newCatModal', 'cancelNewCat'],
+  ['descManageModal', 'closeDescManage'],
+  ['retiroExtraModal', 'cancelRetiroExtra'],
+  ['importModal', 'cancelImport'],
+  ['movModal', 'cancelMov'],
+  ['catManageModal', 'closeCatManage'],
+];
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  for (const [modalId, btnId] of MODALES_CIERRE) {
+    if (document.getElementById(modalId).classList.contains('hidden')) continue;
+    if (modalId === 'movModal' && !stepCategoria.classList.contains('hidden')) {
+      document.getElementById('backToMonto').click();
+    } else {
+      document.getElementById(btnId).click();
+    }
+    return;
+  }
+});
+[['catManageModal', 'closeCatManage'], ['newCatModal', 'cancelNewCat'], ['descManageModal', 'closeDescManage']]
+  .forEach(([id, btnId]) => {
+    const overlay = document.getElementById(id);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) document.getElementById(btnId).click();
+    });
+  });
+
 async function loadResumen() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
@@ -2660,7 +2948,7 @@ function renderResumenList(elId, groups, cls) {
     <div class="resumen-row">
       <button type="button" class="resumen-row-main" data-cat="${g.cat.id}">
         <div class="badge icon-badge" style="background:${colorOf(g.cat)}">${iconSvg(g.cat.icono || 'tag')}</div>
-        <div class="name">${g.cat.nombre}</div>
+        <div class="name">${esc(g.cat.nombre)}</div>
         <div class="count">${g.movs.length}</div>
         <div class="total ${cls}">${fmt(g.total)}</div>
         <i data-lucide="chevron-down" class="chevron"></i>
@@ -2687,7 +2975,7 @@ function toggleResumenDetail(btn, groups, cls) {
   });
   detail.innerHTML = sorted.map(m => {
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-    const desc = (m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : '');
+    const desc = esc((m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : ''));
     const montoCls = m.es_retiro ? 'pos' : cls;
     const sign = m.es_retiro ? '+ ' : '';
     return `

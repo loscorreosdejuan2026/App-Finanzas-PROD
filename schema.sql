@@ -117,3 +117,29 @@ alter table movimientos add column if not exists es_retiro_extra boolean not nul
 -- guarda cuántos dólares se compraron/retiraron realmente (difieren por el tipo de
 -- cambio) y es lo que usa la vista "Mis Ahorros" para el total en esa moneda.
 alter table movimientos add column if not exists monto_usd numeric;
+
+-- 17/10/2026 — histórico de Monefy (solo lectura desde la app, vista "Histórico").
+-- Tabla APARTE de `movimientos`: no toca Saldo, Resumen ni Ahorros. Se carga una sola vez
+-- con un script de consola; sin policy de update a propósito (se borra y recarga).
+create table if not exists historial_monefy (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  fecha date not null,
+  tipo text not null check (tipo in ('ingreso', 'egreso')),
+  categoria_original text not null,
+  categoria_hoy text not null,
+  descripcion text,
+  monto numeric not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists historial_monefy_user_fecha_idx on historial_monefy (user_id, fecha desc);
+alter table historial_monefy enable row level security;
+drop policy if exists "historial_monefy: select propios" on historial_monefy;
+create policy "historial_monefy: select propios" on historial_monefy
+  for select using (auth.uid() = user_id);
+drop policy if exists "historial_monefy: insert propios" on historial_monefy;
+create policy "historial_monefy: insert propios" on historial_monefy
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "historial_monefy: delete propios" on historial_monefy;
+create policy "historial_monefy: delete propios" on historial_monefy
+  for delete using (auth.uid() = user_id);
