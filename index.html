@@ -171,6 +171,22 @@
 
   .ahorros-block { padding: 0 20px; margin-bottom: 16px; }
   .ahorros-block .section-title { padding: 0; margin: 0 0 8px; }
+  /* Total acumulado al lado del título: SOLO en el apartado "FCI U$D" (pedido del usuario),
+     no en los demás (FCI U$D Bull, FCI Pesos, ...). Muestra solo el número, ej. "FCI U$D  603". */
+  .ahorros-titulo { display: flex; align-items: baseline; gap: 10px; min-width: 0; position: relative; }
+  .ahorros-total-titulo {
+    font-size: 15px; font-weight: 700; color: var(--accent); white-space: nowrap;
+    background: none; padding: 0 2px; border-bottom: 1px dashed var(--accent); border-radius: 0;
+  }
+  /* Tooltip con los últimos 3 movimientos, debajo del número */
+  .ahorros-tip {
+    position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; min-width: 170px;
+    background: var(--card); border: 1px solid var(--accent); border-radius: var(--radius-md);
+    padding: 8px 12px; box-shadow: 0 6px 18px rgba(0,0,0,.45); font-size: 14px;
+  }
+  .ahorros-tip .tip-fila { display: flex; gap: 10px; justify-content: space-between; padding: 2px 0; color: var(--text); }
+  .ahorros-tip .tip-fila span:nth-child(2) { color: var(--muted); }
+  .ahorros-tip .tip-val { font-weight: 700; }
   .ahorros-rows { background: var(--card-2); border-radius: var(--radius-md); overflow: hidden; }
   .ahorros-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -328,6 +344,9 @@
     font-size: var(--fs-label); font-weight: 700; color: var(--text);
   }
   .monto-usd-display.active { border-color: var(--accent); color: var(--accent); }
+  /* segundo campo U$D (se suma al primero): lleva un "+" adelante para que se entienda */
+  .monto-usd-extra::before { content: '+'; color: var(--muted); margin-right: 2px; font-weight: 400; }
+  .usd-total-hint { font-size: var(--fs-meta); color: var(--accent); margin: 6px 2px 0; }
   .checks-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 12px; flex: 1; }
   .check-row-inline {
     display: flex; align-items: center; gap: 5px; flex-shrink: 0; cursor: pointer;
@@ -696,6 +715,8 @@
         <div class="desc-input-row">
           <input type="text" id="movDescripcion" placeholder="Descripción">
           <button type="button" id="movMontoUsd" class="monto-usd-display hidden">0</button>
+          <!-- Segundo campo U$D: se SUMA al primero (ej. 600 + 3 = 603) y se guarda el total -->
+          <button type="button" id="movMontoUsd2" class="monto-usd-display monto-usd-extra hidden" title="Otro valor en U$D que se suma al anterior">0</button>
           <div class="checks-row">
             <label class="check-row-inline hidden" id="retiroAhorroRow" for="esRetiroAhorro">
               <input type="checkbox" id="esRetiroAhorro">
@@ -707,6 +728,7 @@
             </label>
           </div>
         </div>
+        <div class="usd-total-hint hidden" id="usdTotalHint"></div>
         <div class="desc-suggest-row" id="descSuggestRow"></div>
       </div>
 
@@ -892,7 +914,10 @@ let montoUsdStr = '0'; // monto en U$D (AHORROS), se tipea con el mismo teclado
 // Permite corregir un dígito del medio sin borrar el resto (tocando el dígito o con ←/→).
 let montoCur = 1;
 let montoUsdCur = 1;
-let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' — a cuál de los dos escribe el teclado
+// Segundo monto en U$D: se suma al primero al guardar (monto_usd = primero + segundo).
+let montoUsd2Str = '0';
+let montoUsd2Cur = 1;
+let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' | 'usd2' — a cuál de los tres escribe el teclado
 let currentMovs = []; // últimos movimientos cargados (para abrir edición sin re-consultar)
 let editingMovId = null; // id del movimiento en edición (null = alta nueva)
 let selectedCategoriaId = null; // categoría elegida para el movimiento que se está cargando/editando (Paso 2)
@@ -948,6 +973,14 @@ const fmt = (n) => {
 const fmtUsd = (n) => {
   const v = Number(n);
   const s = 'U$D ' + Math.abs(v).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return v < 0 ? '−' + s : s;
+};
+
+// Solo el número, sin "$" ni "U$D" (junto al título de cada apartado de Ahorros, que ya dice la
+// moneda): 603, 20.000, −150.
+const soloValor = (n) => {
+  const v = Number(n);
+  const s = Math.abs(v).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   return v < 0 ? '−' + s : s;
 };
 
@@ -1146,11 +1179,20 @@ function updateMontoUsdVisibility() {
   const show = isAhorroUsd();
   const wasHidden = btn.classList.contains('hidden');
   btn.classList.toggle('hidden', !show);
+  // El segundo box (que se suma al primero) es SOLO para el apartado "FCI U$D" (pedido del
+  // usuario); en "FCI U$D Bull" y otros ahorros en dólares queda un solo box.
+  const show2 = show && apartadoDe(document.getElementById('movDescripcion').value).label.trim().toLowerCase() === 'fci u$d';
+  document.getElementById('movMontoUsd2').classList.toggle('hidden', !show2);
   document.getElementById('movDescripcion').classList.toggle('with-usd-field', show);
+  if (!show2) {
+    montoUsd2Str = '0';
+    montoUsd2Cur = 1;
+    if (activeAmountTarget === 'usd2') activeAmountTarget = 'usd';
+  }
   if (!show) {
     montoUsdStr = '0';
     montoUsdCur = 1;
-    if (activeAmountTarget === 'usd') activeAmountTarget = 'main';
+    if (activeAmountTarget === 'usd' || activeAmountTarget === 'usd2') activeAmountTarget = 'main';
   } else if (wasHidden) {
     activeAmountTarget = 'usd'; // recién aparece: el teclado salta directo a cargar los U$D
   }
@@ -1225,6 +1267,12 @@ document.getElementById('esRetiroAhorro').addEventListener('change', renderAmoun
 document.getElementById('movMontoUsd').addEventListener('click', (e) => {
   activeAmountTarget = 'usd';
   montoUsdCur = cursorDesdeToque(document.getElementById('movMontoUsd'), e.clientX, montoUsdStr);
+  keypadField.classList.remove('hidden');
+  renderAmountDisplay();
+});
+document.getElementById('movMontoUsd2').addEventListener('click', (e) => {
+  activeAmountTarget = 'usd2';
+  montoUsd2Cur = cursorDesdeToque(document.getElementById('movMontoUsd2'), e.clientX, montoUsd2Str);
   keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
@@ -1777,6 +1825,17 @@ function renderAmountDisplay() {
   const usdBtn = document.getElementById('movMontoUsd');
   usdBtn.innerHTML = montoHtml(montoUsdStr, montoUsdCur);
   usdBtn.classList.toggle('active', activeAmountTarget === 'usd');
+
+  const usd2Btn = document.getElementById('movMontoUsd2');
+  usd2Btn.innerHTML = montoHtml(montoUsd2Str, montoUsd2Cur);
+  usd2Btn.classList.toggle('active', activeAmountTarget === 'usd2');
+  // Cuando hay un segundo valor, se muestra la suma que se va a guardar.
+  const hint = document.getElementById('usdTotalHint');
+  const usd1 = parseFloat(montoUsdStr.replace(',', '.')) || 0;
+  const usd2 = parseFloat(montoUsd2Str.replace(',', '.')) || 0;
+  const verHint = !usd2Btn.classList.contains('hidden') && usd2 > 0;
+  hint.classList.toggle('hidden', !verHint);
+  if (verHint) hint.textContent = `Total U$D ${(usd1 + usd2).toLocaleString('es-AR', { maximumFractionDigits: 2 })} (${usd1.toLocaleString('es-AR')} + ${usd2.toLocaleString('es-AR')})`;
 }
 
 function openModal(tipo) {
@@ -1787,8 +1846,10 @@ function openModal(tipo) {
   document.getElementById('cancelMov').textContent = 'Cancelar';
   montoStr = '0';
   montoUsdStr = '0';
+  montoUsd2Str = '0';
   montoCur = 1;
   montoUsdCur = 1;
+  montoUsd2Cur = 1;
   activeAmountTarget = 'main';
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
@@ -1815,6 +1876,8 @@ function openEditMovModal(mov) {
   document.getElementById('cancelMov').textContent = 'Cancelar'; // antes decía "Atrás" desde Categorías/Ahorros, pero hacía lo mismo que Cancelar
   montoStr = String(mov.monto).replace('.', ',');
   montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
+  montoUsd2Str = '0';               // el segundo valor U$D arranca en 0: lo guardado es el total
+  montoUsd2Cur = 1;
   montoCur = montoStr.length;       // al editar, el cursor arranca al final y se puede mover
   montoUsdCur = montoUsdStr.length; // tocando un dígito o con las flechas
   activeAmountTarget = 'main';
@@ -1846,8 +1909,9 @@ function openEditMovModal(mov) {
 // igual que siempre; en el medio inserta/borra ahí sin tocar el resto del número.
 function pressKey(key) {
   const isUsd = activeAmountTarget === 'usd';
-  let str = isUsd ? montoUsdStr : montoStr;
-  let cur = Math.max(0, Math.min(isUsd ? montoUsdCur : montoCur, str.length));
+  const isUsd2 = activeAmountTarget === 'usd2';
+  let str = isUsd ? montoUsdStr : isUsd2 ? montoUsd2Str : montoStr;
+  let cur = Math.max(0, Math.min(isUsd ? montoUsdCur : isUsd2 ? montoUsd2Cur : montoCur, str.length));
 
   if (key === 'left') cur = Math.max(0, cur - 1);
   else if (key === 'right') cur = Math.min(str.length, cur + 1);
@@ -1873,7 +1937,9 @@ function pressKey(key) {
   }
   cur = Math.max(0, Math.min(cur, str.length));
 
-  if (isUsd) { montoUsdStr = str; montoUsdCur = cur; } else { montoStr = str; montoCur = cur; }
+  if (isUsd) { montoUsdStr = str; montoUsdCur = cur; }
+  else if (isUsd2) { montoUsd2Str = str; montoUsd2Cur = cur; }
+  else { montoStr = str; montoCur = cur; }
   renderAmountDisplay();
 }
 
@@ -1975,7 +2041,10 @@ async function guardarMovimiento(categoria_id) {
 
   let monto_usd = null;
   if (isAhorroUsd()) {
-    monto_usd = parseFloat(montoUsdStr.replace(',', '.'));
+    // Lo que se guarda es la SUMA de los dos campos U$D (el segundo suele quedar en 0).
+    const usd1 = parseFloat(montoUsdStr.replace(',', '.')) || 0;
+    const usd2 = parseFloat(montoUsd2Str.replace(',', '.')) || 0;
+    monto_usd = Math.round((usd1 + usd2) * 100) / 100;
     if (!monto_usd || monto_usd <= 0) { movError.textContent = 'Ingresá el monto en U$D'; return; }
   }
 
@@ -2594,7 +2663,8 @@ function agruparAhorros(movs) {
     if (!totales.has(ap.key)) {
       totales.set(ap.key, {
         key: ap.key, label: ap.label, moneda: ap.moneda,
-        ahorrado: 0, periodo: 0, retiroExtra: 0, extras: []
+        ahorrado: 0, periodo: 0, retiroExtra: 0, extras: [],
+        movs: [] // todos los movimientos del apartado hasta el cierre del período (para el tooltip)
       });
     }
     return totales.get(ap.key);
@@ -2607,6 +2677,7 @@ function agruparAhorros(movs) {
     // que salió del Balance — difieren por el tipo de cambio.
     const valor = ap.moneda === 'usd' && m.monto_usd != null ? Number(m.monto_usd) : Number(m.monto);
     const signo = m.es_retiro ? -1 : 1;
+    if (m.fecha <= end) bucket.movs.push({ fecha: m.fecha, valor: signo * valor, created: m.created_at || '' });
 
     if (m.fecha < start) { bucket.ahorrado += signo * valor; continue; }
     if (m.fecha > end) continue;
@@ -2653,7 +2724,12 @@ async function loadAhorros() {
     return `
       <div class="ahorros-block">
         <div class="section-title-row" style="padding:0 0 8px;">
-          <div class="section-title" style="padding:0; margin:0;">${esc(t.label)}</div>
+          <div class="ahorros-titulo">
+            <div class="section-title" style="padding:0; margin:0;">${esc(t.label)}</div>
+            ${t.label.trim().toLowerCase() === 'fci u$d' ? `
+              <button type="button" class="ahorros-total-titulo" title="Ver los últimos 3 movimientos">${soloValor(total)}</button>
+              <div class="ahorros-tip hidden">${ultimosMovsHtml(t.movs)}</div>` : ''}
+          </div>
           <button type="button" class="btn-secondary sm add-retiro-extra-btn" data-label="${esc(t.label)}">+ Retiro Extra</button>
         </div>
         <div class="ahorros-rows">
@@ -2678,6 +2754,27 @@ async function loadAhorros() {
       </div>`;
   }).join('');
 }
+
+// Tooltip del total junto al título: los últimos 3 movimientos del apartado (fecha dd/mm/aa y
+// valor; un retiro va con "−"). Se abre al tocar el número y se cierra al tocarlo de nuevo o
+// tocando en cualquier otro lado.
+function ultimosMovsHtml(movs) {
+  const ult = (movs || []).slice()
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || String(b.created).localeCompare(String(a.created)))
+    .slice(0, 3);
+  if (!ult.length) return '<div class="tip-fila">Sin movimientos</div>';
+  return ult.map(m => {
+    const f = `${m.fecha.slice(8, 10)}/${m.fecha.slice(5, 7)}/${m.fecha.slice(2, 4)}`;
+    return `<div class="tip-fila"><span>${f}</span><span>---</span><span class="tip-val">${soloValor(m.valor)}</span></div>`;
+  }).join('');
+}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.ahorros-total-titulo');
+  document.querySelectorAll('.ahorros-tip').forEach((tip) => {
+    const esDeEste = btn && tip.parentElement.contains(btn);
+    tip.classList.toggle('hidden', !(esDeEste && tip.classList.contains('hidden')));
+  });
+});
 
 document.getElementById('ahorrosContent').addEventListener('click', (e) => {
   const addBtn = e.target.closest('.add-retiro-extra-btn');
