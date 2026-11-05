@@ -570,7 +570,7 @@
           <button type="button" class="icon-btn import-btn" id="importBtn" title="Importar movimientos desde Excel o CSV"><i data-lucide="upload"></i></button>
           <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" class="hidden">
           <div class="export-wrap">
-            <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar a CSV"><i data-lucide="download"></i></button>
+            <button type="button" class="icon-btn export-btn" id="exportBtn" title="Exportar a Excel"><i data-lucide="download"></i></button>
             <div class="export-menu hidden" id="exportMenu">
               <button type="button" class="export-menu-item" data-tipo="movimientos">Movimientos</button>
               <button type="button" class="export-menu-item" data-tipo="resumen">Categorías</button>
@@ -860,6 +860,25 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // banners. Se decide por la URL de la base y no por un flag, así no hay nada que cambiar a
 // mano al copiar TEST → PROD.
 if (SUPABASE_URL.includes('fmoschhhpirgzcggxsnf')) document.body.classList.add('env-test');
+
+// Auto-ingreso SOLO en TEST: si no hay sesión y existe el archivo local credenciales-test.json
+// ({"email": "...", "password": "..."}, lo crea el usuario; Claude nunca lo ve) ingresa solo.
+// En PROD no hace nada (el banner de TEST no se activa) y ese archivo nunca se copia a PROD ni
+// va a GitHub. Sin archivo, el login es el de siempre. El servidor local de TEST
+// (Scripts Testing\servidor_test.py) solo entrega ese archivo a la propia PC, no al resto del WiFi.
+(async () => {
+  if (!document.body.classList.contains('env-test')) return;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data.session) return;
+    const r = await fetch('credenciales-test.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const { email, password } = await r.json();
+    if (!email || !password) return;
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) console.warn('Auto-ingreso de TEST: ' + error.message);
+  } catch (e) { /* sin archivo o ilegible: queda el login manual */ }
+})();
 
 let currentTipo = 'ingreso'; // tipo del movimiento que se está creando
 let manageCatTipo = 'ingreso'; // tipo elegido en el form de la sección Categorías
@@ -1272,6 +1291,75 @@ function descargarCSV(filename, header, filas) {
   URL.revokeObjectURL(url);
 }
 
+// Número de serie de Excel para una fecha ISO (YYYY-MM-DD). Se calcula en UTC a mano para no
+// depender de la zona horaria (convertir un Date de JS puede correr la fecha un día).
+function serialExcel(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000;
+}
+
+// Exporta una tabla como Excel (.xlsx) con FILTROS en el encabezado y una fila de SUBTOTALES
+// debajo del último dato. Un CSV no puede guardar filtros ni fórmulas, por eso se usa la librería de Excel
+// que la app ya carga para importar. Las celdas son numéricas/fecha reales (no texto), así que
+// sirven directo para filtrar, sumar y armar tablas dinámicas.
+//   filas: matriz de valores crudos (fechas como 'YYYY-MM-DD', montos como números)
+//   fechaCols / numCols: índices de columnas de fecha y de monto
+// Los subtotales usan SUBTOTAL(109, ...) y SUBTOTAL(103, ...): suman/cuentan SOLO las filas que
+// quedan visibles después de filtrar. Si la librería no cargó (sin internet), baja el CSV de siempre.
+function descargarTabla(nombreBase, header, filas, { fechaCols = [], numCols = [] } = {}) {
+  if (typeof XLSX === 'undefined') {
+    const filasCsv = filas.map(f => f.map((v, i) =>
+      fechaCols.includes(i) ? new Date(v + 'T00:00:00').toLocaleDateString('es-AR')
+        : numCols.includes(i) ? fmtCsvNumber(v) : v));
+    descargarCSV(nombreBase + '.csv', header, filasCsv);
+    alert('No se pudo cargar la librería de Excel (se baja de internet al abrir la app), así que se descargó un CSV sin filtros ni subtotales. Revisá la conexión y recargá la página para exportar a Excel.');
+    return;
+  }
+  const n = filas.length;
+  const aoa = [header, ...filas.map(f => f.map((v, i) => fechaCols.includes(i) ? serialExcel(v) : v))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  for (let r = 1; r <= n; r++) {
+    for (const c of fechaCols) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell) cell.z = 'dd/mm/yyyy'; }
+    for (const c of numCols) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell) cell.z = '#,##0'; }
+  }
+  // Filtros en la fila de encabezado, sobre la tabla (no sobre el bloque de subtotales).
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: n, c: header.length - 1 } }) };
+
+  // Anchos de columna según el contenido (con tope), más las 2 columnas del bloque de subtotales.
+  const anchos = header.map((h, i) => {
+    let max = String(h).length;
+    for (const f of filas) max = Math.max(max, fechaCols.includes(i) ? 10 : String(f[i] ?? '').length);
+    return { wch: Math.min(Math.max(max + 2, 10), 48) };
+  });
+
+  // Fila de SUBTOTALES justo debajo del último dato, en la misma columna de cada monto (ej. el
+  // subtotal de "Monto" queda en E9 si los datos llegan a E8). Queda FUERA del rango del filtro
+  // (el filtro llega solo hasta el último dato), así no se oculta al filtrar. En la primera
+  // columna va la cantidad de filas visibles ("7 filas") y la palabra SUBTOTAL queda a la
+  // izquierda de la primera columna de monto.
+  if (n > 0) {
+    const col = (c) => XLSX.utils.encode_col(c);
+    const filaSub = n + 1; // fila 0-based: encabezado = 0, datos = 1..n
+    const poner = (c, cell) => { ws[XLSX.utils.encode_cell({ r: filaSub, c })] = cell; };
+    poner(0, { t: 'n', v: n, f: `SUBTOTAL(103,${col(0)}2:${col(0)}${n + 1})`, z: '0" filas"' });
+    const primeraNum = numCols.length ? Math.min(...numCols) : 1;
+    if (primeraNum - 1 > 0) poner(primeraNum - 1, { t: 's', v: 'SUBTOTAL' });
+    else if (!numCols.length) poner(1, { t: 's', v: 'SUBTOTAL (filas visibles)' });
+    for (const c of numCols) {
+      const suma = filas.reduce((s, f) => s + Number(f[c] || 0), 0);
+      poner(c, { t: 'n', v: suma, f: `SUBTOTAL(109,${col(c)}2:${col(c)}${n + 1})`, z: '#,##0' });
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: filaSub, c: header.length - 1 } });
+  }
+  ws['!cols'] = anchos;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+  wb.Workbook = { CalcPr: { fullCalcOnLoad: true } }; // que Excel recalcule los subtotales al abrir
+  XLSX.writeFile(wb, nombreBase + '.xlsx');
+}
+
 async function exportMovimientosCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
@@ -1288,15 +1376,13 @@ async function exportMovimientosCSV() {
   const filas = (data || []).filter(m => !m.es_retiro_extra).map(m => {
     const tipo = m.categorias ? m.categorias.tipo : null;
     const signo = (tipo === 'egreso' && !m.es_retiro) ? -1 : 1;
-    const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR');
     const tipoStr = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
-    const montoStr = fmtCsvNumber(signo * Number(m.monto));
-    return [fecha, tipoStr, categoria, m.descripcion || '', montoStr];
+    return [m.fecha, tipoStr, categoria, m.descripcion || '', signo * Number(m.monto)];
   });
 
-  descargarCSV(`movimientos_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
-    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'], filas);
+  descargarTabla(`movimientos_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
+    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'], filas, { fechaCols: [0], numCols: [4] });
 }
 
 async function exportResumenCSV() {
@@ -1318,10 +1404,10 @@ async function exportResumenCSV() {
   }
   const filas = Object.values(groups)
     .sort((a, b) => b.total - a.total)
-    .map(g => [g.cat.nombre, g.cat.tipo === 'ingreso' ? 'Ingreso' : 'Gasto', g.cantidad, fmtCsvNumber(g.total)]);
+    .map(g => [g.cat.nombre, g.cat.tipo === 'ingreso' ? 'Ingreso' : 'Gasto', g.cantidad, g.total]);
 
-  descargarCSV(`resumen_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
-    ['Categoría', 'Tipo', 'Cantidad de movimientos', 'Monto total'], filas);
+  descargarTabla(`resumen_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
+    ['Categoría', 'Tipo', 'Cantidad de movimientos', 'Monto total'], filas, { numCols: [2, 3] });
 }
 
 async function exportAhorrosCSV() {
@@ -1336,13 +1422,12 @@ async function exportAhorrosCSV() {
   // período activo, por eso el nombre del archivo lo lleva.
   const filas = agruparAhorros(data).map(t => {
     const total = t.ahorrado + t.periodo - t.retiroExtra;
-    return [t.label, t.moneda === 'usd' ? 'U$D' : 'Pesos',
-      fmtCsvNumber(t.ahorrado), fmtCsvNumber(t.periodo),
-      fmtCsvNumber(t.retiroExtra), fmtCsvNumber(total)];
+    return [t.label, t.moneda === 'usd' ? 'U$D' : 'Pesos', t.ahorrado, t.periodo, t.retiroExtra, total];
   });
 
-  descargarCSV(`ahorros_${periodoFilenameSlug()}_${horaFilenameSlug()}.csv`,
-    ['Apartado', 'Moneda', 'Ahorrado', labelPeriodoAhorros(), 'Retiro Extra', 'Total'], filas);
+  // Ojo: mezcla Pesos y U$D en la misma columna; al filtrar por Moneda los subtotales dan cada uno.
+  descargarTabla(`ahorros_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
+    ['Apartado', 'Moneda', 'Ahorrado', labelPeriodoAhorros(), 'Retiro Extra', 'Total'], filas, { numCols: [2, 3, 4, 5] });
 }
 
 function exportDescFrecuentesCSV() {
@@ -1360,7 +1445,7 @@ function exportDescFrecuentesCSV() {
   }
 
   const hoy = hoyLocalISO().split('-').reverse().join('-');
-  descargarCSV(`descripciones_${hoy}_${horaFilenameSlug()}.csv`, ['Tipo', 'Categoría', 'Descripción'], filas);
+  descargarTabla(`descripciones_${hoy}_${horaFilenameSlug()}`, ['Tipo', 'Categoría', 'Descripción'], filas);
 }
 
 const exportMenu = document.getElementById('exportMenu');
@@ -2823,6 +2908,11 @@ function procesarTextoCsv(text) {
 function validarEncabezadoYPrevisualizar(rows) {
   if (!rows || !rows.length) { alert('El archivo está vacío.'); return; }
 
+  // Solo se miran las primeras 5 columnas, y se salta la fila de SUBTOTAL que la app pone debajo
+  // del último dato al exportar a Excel (lleva la palabra SUBTOTAL en la columna Descripción):
+  // no es un movimiento.
+  rows = rows.map(r => r.slice(0, IMPORT_HEADER.length))
+    .filter((r, i) => i === 0 || !/^subtotal/i.test(String(r[3] ?? '').trim()));
   const header = rows[0].map(h => String(h ?? '').trim());
   const headerOk = header.length === IMPORT_HEADER.length && header.every((h, i) => h === IMPORT_HEADER[i]);
   if (!headerOk) {
