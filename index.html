@@ -3263,7 +3263,9 @@ async function loadResumen() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('id, fecha, monto, descripcion, categoria_id, es_retiro, es_retiro_extra, categorias(id, nombre, tipo, icono, color)')
+    // monto_usd tiene que venir: estos movimientos se abren en el modal de edición al tocarlos, y sin
+    // este campo el box U$D de un ahorro en dólares aparecía en 0 aunque el dato estuviera guardado.
+    .select('id, fecha, monto, monto_usd, descripcion, categoria_id, es_retiro, es_retiro_extra, categorias(id, nombre, tipo, icono, color)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
 
