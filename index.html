@@ -234,6 +234,7 @@
   .mov-item .amt.pos { color: var(--green); }
   .mov-item .amt.neg { color: var(--red); }
   .mov-item .amt.cred, .mov-item .desc .cred { color: var(--yellow); }
+  .resumen-row-main .total.cred, .d-monto.cred { color: var(--yellow); }
 
   /* Buscadores con "×" para limpiar: la × aparece sola cuando hay texto (:placeholder-shown
      también reacciona a cambios hechos por código, no solo a lo que se tipea). */
@@ -719,7 +720,7 @@
             </select>
             <select id="histCat"><option value="">CATEGORÍA: TODAS</option></select>
           </div>
-          <div class="search-field">
+          <div class="search-field hidden"><!-- el Histórico usa el buscador de arriba, igual que las demás pantallas -->
             <input type="text" id="histSearch" placeholder="Buscar en el histórico (ej: Aguas, Epe)...">
             <button type="button" class="clear-x" data-clear="histSearch" aria-label="Limpiar búsqueda">×</button>
           </div>
@@ -1534,6 +1535,7 @@ document.getElementById('movMontoUsd2').addEventListener('click', (e) => {
   renderAmountDisplay();
 });
 document.getElementById('amountDisplay').addEventListener('click', (e) => {
+  if (montoSoloLectura()) { mostrarTipTexto('Es la suma de tus consumos', e.currentTarget, true); return; }
   activeAmountTarget = 'main';
   montoCur = cursorDesdeToque(document.getElementById('amountDisplay'), e.clientX, montoStr);
   keypadField.classList.remove('hidden');
@@ -1583,11 +1585,18 @@ function comparadorMovs(movs) {
 // Saldo por sí sola: lo que suma es UN movimiento por tarjeta y mes (ver cuotasDelPeriodo).
 // Una "compra anterior" en M_PAGO NO es origen: es un gasto visible que suma por sí mismo (conserva su marca
 // de tarjeta solo para que la pantalla Tarjetas la cuente).
-const esOrigenCuotas = (m) => m.cuotas > 1 || (!!m.tarjeta_id && !!m.cuota_inicio
+// "Override" de un mes de cuotas: movimiento real (descripción "Cuotas <tarjeta>", cuotas null, con tarjeta y
+// cuota_inicio = mes) que solo guarda la CATEGORÍA elegida para el movimiento mensual automático (ej. al pagar el
+// resumen se pasa de M_PAGO a TARJETAS). El importe sigue calculándose solo; el override no suma por sí mismo.
+const esOverrideCuotas = (m) => !!m.tarjeta_id && !!m.cuota_inicio && m.cuotas == null && /^cuotas\s/i.test(m.descripcion || '');
+const esOrigenCuotas = (m) => esOverrideCuotas(m) || m.cuotas > 1 || (!!m.tarjeta_id && !!m.cuota_inicio
   && !(m.categorias && String(m.categorias.nombre || '').toUpperCase() === 'M_PAGO'));
 function cuotasDelPeriodo(origs, start, end) {
   const porClave = {};
+  const overrides = {};
+  for (const m of origs) if (esOverrideCuotas(m)) overrides[m.tarjeta_id + '|' + m.cuota_inicio.slice(0, 7)] = m;
   for (const m of origs) {
+    if (esOverrideCuotas(m)) continue;
     if (!esOrigenCuotas(m)) continue; // una "compra anterior" en M_PAGO suma por sí misma, no dentro de Cuotas
     const t = tarjetas.find(x => x.id === m.tarjeta_id);
     const dia = t ? diaDeCierre(t) : null;
@@ -1609,11 +1618,13 @@ function cuotasDelPeriodo(origs, start, end) {
   }
   const mpago = categorias.find(c => c.nombre.toUpperCase() === 'M_PAGO' && c.tipo === 'egreso');
   return Object.entries(porClave).map(([k, g]) => {
-    const cat = mpago ? { id: mpago.id, nombre: mpago.nombre, tipo: mpago.tipo, icono: mpago.icono, color: mpago.color } : g.base.categorias;
+    const ov = overrides[k];
+    const cat = ov ? ov.categorias
+      : mpago ? { id: mpago.id, nombre: mpago.nombre, tipo: mpago.tipo, icono: mpago.icono, color: mpago.color } : g.base.categorias;
     return Object.assign({}, g.base, {
       id: 'cuotas-' + k, fecha: g.fecha, monto: Math.round(g.monto * 100) / 100, cuotas: null, cuota_inicio: null,
       categoria_id: cat ? cat.id : g.base.categoria_id, categorias: cat, es_retiro: false, es_retiro_extra: false,
-      descripcion: 'Cuotas ' + g.nombre, _agrupada: true, _detalle: g.det || []
+      descripcion: 'Cuotas ' + g.nombre, _agrupada: true, _detalle: g.det || [], _overrideId: ov ? ov.id : null
     });
   });
 }
@@ -1640,6 +1651,7 @@ async function loadMovimientos() {
     if (seq !== loadMovSeq) return;
     cuotasOrig = rc.error ? [] : (rc.data || []);
     movs.push(...cuotasDelPeriodo(cuotasOrig, start, end));
+    for (let i = movs.length - 1; i >= 0; i--) if (esOverrideCuotas(movs[i])) movs.splice(i, 1); // el override solo guarda la categoría: no se lista
     movs.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
   } catch (e) { console.error(e); }
   if (seq !== loadMovSeq) return;
@@ -2039,7 +2051,6 @@ document.getElementById('movList').addEventListener('click', (e) => {
   const mov = cuotasOrig.find(m => m.id === item.dataset.id) || currentMovs.find(m => m.id === item.dataset.id);
   const am = e.target.closest('.right');
   if (mov && am && mostrarSumaTip(mov, currentMovs, am)) return;
-  if (mov && mov._agrupada) { toggleDetalleCuotas(item, mov); return; }
   if (mov) openEditMovModal(mov);
 });
 
@@ -2061,17 +2072,31 @@ document.getElementById('searchToggle').addEventListener('click', () => {
     searchInputEl.focus();
   } else {
     searchInputEl.classList.add('hidden');
-    if (searchInputEl.value) { searchInputEl.value = ''; loadMovimientos(); }
+    if (searchInputEl.value) { searchInputEl.value = ''; aplicarFiltroActual(); }
   }
 });
 
+// Buscador único para todas las pantallas: el texto se conserva al cambiar de pantalla y cada
+// una lo aplica a lo que muestra (Movimientos busca en todo el historial; Categorías, Ahorros y
+// Tarjetas filtran su contenido; el Histórico usa su propio campo, sincronizado con este).
+function textoFiltro() { return searchInputEl.value.trim().toLowerCase(); }
+function coincideFiltro(m) {
+  const t = textoFiltro();
+  if (!t) return true;
+  return ((m.descripcion || '') + ' ' + (m.categorias ? m.categorias.nombre : '')).toLowerCase().includes(t);
+}
+function aplicarFiltroActual() {
+  if (inTarjetasView) return renderTarjetas();
+  if (inHistoricoView) return loadHistorico(true);
+  if (inResumenView) return loadResumen();
+  if (inAhorrosView) return loadAhorros();
+  const text = searchInputEl.value.trim();
+  return text ? runSearch(text) : loadMovimientos();
+}
 let searchDebounce = null;
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  const text = e.target.value.trim();
+document.getElementById('searchInput').addEventListener('input', () => {
   clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => {
-    if (text) runSearch(text); else loadMovimientos();
-  }, 300);
+  searchDebounce = setTimeout(aplicarFiltroActual, 300);
 });
 
 async function runSearch(text) {
@@ -2082,7 +2107,7 @@ async function runSearch(text) {
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
-  currentMovs = data || [];
+  currentMovs = (data || []).filter(m => !esOverrideCuotas(m));
   const visibles = currentMovs.filter(m => !m.es_retiro_extra);
   document.getElementById('movListTitle').textContent = `Resultados (${visibles.length})`;
   renderMovimientos(visibles, 'No se encontraron movimientos con esa descripción.');
@@ -2213,13 +2238,31 @@ function cursorDesdeToque(el, x, str) {
   return str.length;
 }
 
+// El importe del movimiento mensual "Cuotas <tarjeta>" no se edita: es la suma de los consumos de la tarjeta.
+function montoSoloLectura() { return !!(editingMovOrig && editingMovOrig._agrupada && editingMovId === editingMovOrig.id); }
+function mostrarTipTexto(texto, ancla, arriba) {
+  cerrarSumaTip();
+  const el = document.createElement('div');
+  el.className = 'ahorros-tip';
+  el.style.cssText = 'position:fixed;z-index:1000;min-width:200px;color:var(--yellow);font-weight:600';
+  el.textContent = texto;
+  document.body.appendChild(el);
+  const r = ancla.getBoundingClientRect();
+  const caja = (ancla.closest && ancla.closest('#amountDisplay')) || ancla; // arriba de la casilla completa
+  const yArriba = caja.getBoundingClientRect().top - el.offsetHeight - 6;
+  el.style.top = (arriba && yArriba >= 8 ? yArriba : Math.min(r.bottom + 6, window.innerHeight - el.offsetHeight - 8)) + 'px';
+  el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8)) + 'px';
+  sumaTipEl = el;
+}
 function renderAmountDisplay() {
   const el = document.getElementById('amountDisplay');
-  el.innerHTML = montoHtml(montoStr, montoCur);
+  const lectura = montoSoloLectura();
+  el.innerHTML = montoHtml(montoStr, lectura ? -1 : montoCur); // sin cursor activo
+  el.removeAttribute('title'); // sin leyenda nativa: el aviso es el tooltip amarillo al pasar por el número
   // Un Retiro de AHORROS libera saldo: se ve verde igual que en la lista de Movimientos.
   const esRetiro = document.getElementById('esRetiroAhorro').checked;
   el.className = 'amount-display amount-display-sm ' + (currentTipo === 'ingreso' || esRetiro ? 'pos' : 'neg')
-    + (activeAmountTarget === 'main' ? ' active-target' : '');
+    + (activeAmountTarget === 'main' && !lectura ? ' active-target' : '');
 
   const usdBtn = document.getElementById('movMontoUsd');
   usdBtn.innerHTML = montoHtml(montoUsdStr, montoUsdCur);
@@ -2277,7 +2320,6 @@ function openModal(tipo) {
 }
 
 function openEditMovModal(mov) {
-  if (mov && mov._agrupada) { showTarjetasView(); return; } // el movimiento mensual de cuotas se ve en Tarjetas
   currentTipo = mov.categorias ? mov.categorias.tipo : 'egreso';
   editingMovId = mov.id;
   selectedCategoriaId = mov.categoria_id;
@@ -2304,7 +2346,8 @@ function openEditMovModal(mov) {
   movError.textContent = '';
   catStepError.textContent = '';
   newCatForm.classList.remove('show');
-  deleteMovBtn.classList.remove('hidden');
+  // el movimiento mensual de cuotas es automático: solo se puede borrar su cambio de categoría (override)
+  deleteMovBtn.classList.toggle('hidden', !!mov._agrupada && !mov._overrideId);
   updateCatSelectDisplay();
   // updateCatSelectDisplay() manda el teclado al campo U$D cuando aparece (útil al CARGAR);
   // al editar se abre apuntando a los pesos, que es lo que se suele corregir.
@@ -2321,6 +2364,7 @@ function openEditMovModal(mov) {
 // 'left' / 'right' / 'home' / 'end' para mover el cursor. Con el cursor al final se comporta
 // igual que siempre; en el medio inserta/borra ahí sin tocar el resto del número.
 function pressKey(key) {
+  if (montoSoloLectura()) return; // importe automático: no se edita
   const isUsd = activeAmountTarget === 'usd';
   const isUsd2 = activeAmountTarget === 'usd2';
   const isCuotas = activeAmountTarget === 'cuotas';
@@ -2481,7 +2525,31 @@ document.getElementById('saveNewCat').addEventListener('click', async () => {
   selectCategoriaAndAdvance(data.id);
 });
 
+// Guarda solo la categoría elegida para el movimiento mensual "Cuotas <tarjeta>" (el importe sigue automático).
+async function guardarOverrideCuotas(categoria_id) {
+  const m = editingMovOrig;
+  const mpago = categorias.find(c => c.nombre.toUpperCase() === 'M_PAGO' && c.tipo === 'egreso');
+  const ym = m.fecha.slice(0, 7);
+  if (mpago && categoria_id === mpago.id) {
+    // vuelve a la categoría automática: se quita el override si existía
+    if (m._overrideId) { const { error } = await sb.from('movimientos').delete().eq('id', m._overrideId); if (error) { movError.textContent = error.message; return; } }
+  } else if (m._overrideId) {
+    const { error } = await sb.from('movimientos').update({ categoria_id, monto: m.monto }).eq('id', m._overrideId);
+    if (error) { movError.textContent = error.message; return; }
+  } else {
+    const { data: userData } = await sb.auth.getUser();
+    const { error } = await sb.from('movimientos').insert({
+      categoria_id, fecha: ym + '-01', monto: m.monto, descripcion: m.descripcion, es_retiro: false, es_retiro_extra: false,
+      tarjeta_id: m.tarjeta_id, cuota_inicio: ym + '-01', user_id: userData.user.id
+    });
+    if (error) { movError.textContent = error.message; return; }
+  }
+  movModal.classList.add('hidden');
+  await refreshCurrentView();
+}
+
 async function guardarMovimiento(categoria_id) {
+  if (editingMovOrig && editingMovOrig._agrupada && editingMovId === editingMovOrig.id) return guardarOverrideCuotas(categoria_id);
   movError.textContent = '';
   const monto = parseFloat(montoStr.replace(',', '.'));
   const fecha = document.getElementById('movFecha').value;
@@ -2576,6 +2644,15 @@ async function guardarMovimiento(categoria_id) {
 
 deleteMovBtn.addEventListener('click', async () => {
   if (!editingMovId) return;
+  if (editingMovOrig && editingMovOrig._agrupada) {
+    if (!editingMovOrig._overrideId) return;
+    if (!(await confirmar('¿Volver este movimiento de cuotas a su categoría automática (M_PAGO)?'))) return;
+    const { error } = await sb.from('movimientos').delete().eq('id', editingMovOrig._overrideId);
+    if (error) { movError.textContent = error.message; return; }
+    movModal.classList.add('hidden');
+    await refreshCurrentView();
+    return;
+  }
   // Una compra en cuotas se borra entera: desaparecen todas sus cuotas (este mes y los siguientes).
   const enCuotas = editingMovOrig && editingMovOrig.cuotas > 1;
   if (!(await confirmar(enCuotas
@@ -2914,15 +2991,14 @@ function showMovView() {
   openResumenBtn.classList.remove('active');
   openAhorrosBtn.classList.remove('active');
   openMovimientosBtn.classList.add('active');
-  document.getElementById('searchToggle').classList.remove('hidden');
+  hideSearchForOtherView();
+  aplicarFiltroActual();
 }
 
+// El buscador queda disponible en todas las pantallas y conserva el texto al cambiar de una a otra.
 function hideSearchForOtherView() {
-  document.getElementById('searchToggle').classList.add('hidden');
-  if (!searchInputEl.classList.contains('hidden')) {
-    searchInputEl.classList.add('hidden');
-    if (searchInputEl.value) { searchInputEl.value = ''; loadMovimientos(); }
-  }
+  document.getElementById('searchToggle').classList.remove('hidden');
+  if (searchInputEl.value) searchInputEl.classList.remove('hidden');
 }
 
 async function showResumenView() {
@@ -3041,7 +3117,7 @@ function histItemHtml(r) {
 async function loadHistorico(reset) {
   const miRequest = ++histRequest;
   if (reset) histOffset = 0;
-  const texto = document.getElementById('histSearch').value.trim();
+  const texto = searchInputEl.value.trim(); // buscador único de arriba
   let tipo = document.getElementById('histTipo').value;
   // El valor de la categoría es "tipo|NOMBRE": así TARJETAS de Gastos y de Ingresos se filtran
   // por separado aunque se elija desde "Todos los tipos".
@@ -3077,8 +3153,8 @@ async function loadHistorico(reset) {
 
 async function showHistoricoView() {
   leaveTarjetas();
-  // Cada vez que se abre arranca limpia, para no confundirse con filtros de la vez anterior.
-  document.getElementById('histSearch').value = '';
+  // El texto del buscador se conserva entre pantallas (los filtros de tipo y categoría arrancan limpios).
+  document.getElementById('histSearch').value = searchInputEl.value;
   document.getElementById('histTipo').value = '';
   llenarCategoriasHistorico();
   movView.classList.add('hidden');
@@ -3189,10 +3265,19 @@ function renderTarjetas() {
     list.innerHTML = tarjetas.map(t => {
       const dia = diaDeCierre(t);
       // Desplegable con lo que hay que pagar cada mes con esta tarjeta; cada mes se abre y muestra sus cuotas.
-      const meses = mesesDeTarjeta(t, cuotasMovs);
+      const mesesTodos = mesesDeTarjeta(t, cuotasMovs);
+      // Total pendiente en cuotas (suma de todos los meses, desde el mes actual): no depende del buscador.
+      const totalCuotas = Object.values(mesesTodos).reduce((s, arr) => s + arr.reduce((a, x) => a + x.c.monto, 0), 0);
+      // Buscador: si coincide el nombre de la tarjeta se muestra entera; si no, solo las cuotas que coinciden.
+      const ft = textoFiltro();
+      const nombreCoincide = !ft || t.nombre.toLowerCase().includes(ft);
+      const meses = {};
+      for (const [k, arr] of Object.entries(mesesTodos)) {
+        const sel = nombreCoincide ? arr : arr.filter(x => (x.m.descripcion || '').toLowerCase().includes(ft));
+        if (sel.length) meses[k] = sel;
+      }
+      if (!nombreCoincide && !Object.keys(meses).length) return '';
       const ks = Object.keys(meses).map(Number).sort((a, b) => a - b);
-      // Total pendiente en cuotas (suma de todos los meses del desplegable, desde el mes actual).
-      const totalCuotas = ks.reduce((s, k) => s + meses[k].reduce((a, x) => a + x.c.monto, 0), 0);
       const sty = 'display:flex;justify-content:space-between;gap:8px;padding:8px 4px;';
       const desplegable = ks.length ? `
         <details class="tj-det" style="margin:4px 4px 0;padding:6px 12px;background:var(--surface-2,#2a2d34);border-radius:12px">
@@ -3220,7 +3305,7 @@ function renderTarjetas() {
         </button>
         ${desplegable}
       </div>`;
-    }).join('');
+    }).join('') || '<div class="empty-msg">Sin resultados para la búsqueda</div>';
   }
   if (window.lucide) lucide.createIcons();
 }
@@ -3344,6 +3429,7 @@ document.getElementById('deleteTarjetaBtn').addEventListener('click', async () =
 });
 let histDebounce = null;
 document.getElementById('histSearch').addEventListener('input', () => {
+  searchInputEl.value = document.getElementById('histSearch').value; // mantiene el mismo texto al volver a otra pantalla
   clearTimeout(histDebounce);
   histDebounce = setTimeout(() => loadHistorico(true), 300);
 });
@@ -3448,12 +3534,13 @@ async function loadAhorros() {
   ahorrosMovsById = {};
   for (const m of data) ahorrosMovsById[m.id] = m;
 
-  const bloques = agruparAhorros(data);
+  const bloques = agruparAhorros(data.filter(coincideFiltro));
 
   if (!bloques.length) {
     // Si hay movimientos pero ninguno cae en el período elegido, el mensaje tiene que
     // decir eso y no "todavía no cargaste nada", que sería engañoso.
-    el.innerHTML = data.length
+    el.innerHTML = textoFiltro() ? '<div class="empty-ahorros">Sin resultados para la búsqueda</div>'
+      : data.length
       ? '<div class="empty-ahorros">No hay movimientos de AHORROS en este período</div>'
       : '<div class="empty-ahorros">Todavía no cargaste movimientos de AHORROS</div>';
     return;
@@ -4032,7 +4119,7 @@ async function loadResumen() {
       .select('*, categorias(id, nombre, tipo, icono, color)').not('tarjeta_id', 'is', null).or('cuotas.gte.2,cuota_inicio.not.is.null');
     origs = rc.error ? [] : (rc.data || []);
   } catch (e) { console.error(e); }
-  const filas = data.filter(m => !esOrigenCuotas(m)).concat(cuotasDelPeriodo(origs, start, end));
+  const filas = data.filter(m => !esOrigenCuotas(m)).concat(cuotasDelPeriodo(origs, start, end)).filter(coincideFiltro);
 
   resumenMovsById = {};
   const groups = {};
@@ -4047,6 +4134,14 @@ async function loadResumen() {
     // criterio que en la tarjeta de Saldo.
     groups[cid].total += m.es_retiro ? -Number(m.monto) : Number(m.monto);
     groups[cid].movs.push(m);
+  }
+  // Card amarilla "TARJETAS" = lo COMPRADO en cuotas en el período (la compra completa, en su fecha). No suma a
+  // Ingresos ni Gastos (el saldo real lo mueven las cuotas mensuales); sirve para ubicar la compra.
+  // La card común "TARJETAS" sigue siendo lo PAGADO.
+  const compras = data.filter(m => m.cuotas > 1 && m.categorias && !m.es_retiro_extra).filter(coincideFiltro);
+  if (compras.length) {
+    compras.forEach(m => { resumenMovsById[m.id] = m; });
+    groups['__credito'] = { key: '__credito', credito: true, cat: compras[0].categorias, total: compras.reduce((s, m) => s + Number(m.monto), 0), movs: compras };
   }
   const all = Object.values(groups);
   const ingreso = all.filter(g => g.cat.tipo === 'ingreso').sort((a, b) => b.total - a.total);
@@ -4065,11 +4160,11 @@ function renderResumenList(elId, groups, cls) {
   }
   el.innerHTML = groups.map(g => `
     <div class="resumen-row">
-      <button type="button" class="resumen-row-main" data-cat="${g.cat.id}">
-        <div class="badge icon-badge" style="background:${colorOf(g.cat)}">${iconSvg(g.cat.icono || 'tag')}</div>
+      <button type="button" class="resumen-row-main" data-cat="${g.key || g.cat.id}"${g.credito ? ' title="Lo comprado en cuotas (no suma a Gastos)"' : ''}>
+        <div class="badge icon-badge" style="background:${g.credito ? 'var(--yellow)' : colorOf(g.cat)}">${iconSvg(g.cat.icono || 'tag')}</div>
         <div class="name">${esc(g.cat.nombre)}</div>
         <div class="count">${g.movs.length}</div>
-        <div class="total ${cls}">${fmt(g.total)}</div>
+        <div class="total ${g.credito ? 'cred' : cls}">${fmt(g.total)}</div>
         <i data-lucide="chevron-down" class="chevron"></i>
       </button>
       <div class="resumen-detail hidden"></div>
@@ -4084,7 +4179,7 @@ function toggleResumenDetail(btn, groups, cls) {
   const detail = row.querySelector('.resumen-detail');
   const isOpen = row.classList.toggle('open');
   if (!isOpen) { detail.classList.add('hidden'); return; }
-  const g = groups.find(x => x.cat.id === btn.dataset.cat);
+  const g = groups.find(x => (x.key || x.cat.id) === btn.dataset.cat);
   // Fecha más nueva primero y, a igual fecha, el monto mayor arriba (mismo criterio que
   // la lista de Movimientos: se busca por importe, así que el grande tiene que saltar).
   const cmpMovs = comparadorMovs(g.movs);
@@ -4095,8 +4190,8 @@ function toggleResumenDetail(btn, groups, cls) {
   });
   detail.innerHTML = sorted.map(m => {
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-    const desc = esc((m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : ''));
-    const montoCls = m.es_retiro ? 'pos' : cls;
+    const desc = esc((m.descripcion || '-') + (m.es_retiro ? ' (Retiro)' : '') + (g.credito ? ` · ${m.cuotas} cuotas` : ''));
+    const montoCls = g.credito ? 'cred' : (m.es_retiro ? 'pos' : cls);
     const sign = m.es_retiro ? '+ ' : '';
     return `
       <button type="button" class="resumen-detail-item" data-id="${m.id}">
@@ -4163,7 +4258,15 @@ document.addEventListener('mouseout', (e) => {
   if (sumaTipEl && sumaTipEl._ancla && e.target.closest('.d-monto, .mov-item .right') === sumaTipEl._ancla
       && !sumaTipEl._ancla.contains(e.relatedTarget)) cerrarSumaTip();
 });
-document.addEventListener('click', (e) => { if (sumaTipEl && !e.target.closest('.d-monto, .mov-item .right')) cerrarSumaTip(); }, true);
+document.addEventListener('click', (e) => { if (sumaTipEl && !e.target.closest('.d-monto, .mov-item .right, #amountDisplay')) cerrarSumaTip(); }, true);
+// Tooltip amarillo al pasar el mouse por el NÚMERO (dígitos) del importe automático de "Cuotas <tarjeta>".
+document.getElementById('amountDisplay').addEventListener('mouseover', (e) => {
+  const num = e.target.closest('.ach, .asep');
+  if (montoSoloLectura() && num && !(sumaTipEl && sumaTipEl._num)) { mostrarTipTexto('Es la suma de tus consumos', num, true); sumaTipEl._num = true; }
+});
+document.getElementById('amountDisplay').addEventListener('mouseout', (e) => {
+  if (montoSoloLectura() && e.target.closest('.ach, .asep') && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.ach, .asep'))) cerrarSumaTip();
+});
 
 resumenView.addEventListener('click', (e) => {
   const item = e.target.closest('.resumen-detail-item');
@@ -4172,7 +4275,6 @@ resumenView.addEventListener('click', (e) => {
   if (!mov) return;
   const am = e.target.closest('.d-monto');
   if (am && mostrarSumaTip(mov, Object.values(resumenMovsById).filter(Boolean), am)) return;
-  if (mov._agrupada) { toggleDetalleCuotas(item, mov); return; }
   openEditMovModal(mov);
 });
 </script>
