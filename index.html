@@ -3201,7 +3201,7 @@ function renderTarjetas() {
             const tot = meses[k].reduce((s, x) => s + x.c.monto, 0);
             return `<details style="border-top:1px solid rgba(255,255,255,.08)">
               <summary style="${sty}cursor:pointer;list-style-position:inside"><b>${String(k % 12 + 1).padStart(2, '0')}/${String(Math.floor(k / 12)).slice(2)}</b><span class="amt neg">${fmt(tot)}</span></summary>
-              ${meses[k].map(x => `<div style="${sty}font-size:13px;opacity:.85"><span>${esc(notaDeCuota(x.m.descripcion))}${x.anterior ? '' : ` <b>${x.c.n}/${x.m.cuotas}</b>`}</span><span>${fmt(x.c.monto)}</span></div>`).join('')}
+              ${meses[k].slice().sort((a, b) => b.c.monto - a.c.monto).map(x => `<div style="${sty}font-size:13px;opacity:.85"><span>${esc(notaDeCuota(x.m.descripcion))}${x.anterior ? '' : ` <b>${x.c.n}/${x.m.cuotas}</b>`}</span><span>${fmt(x.c.monto)}</span></div>`).join('')}
             </details>`;
           }).join('')}
         </details>` : '';
