@@ -1583,14 +1583,14 @@ function comparadorMovs(movs) {
 }
 // "Origen de cuotas": compra en 2+ cuotas o "compras anteriores" (cuota_inicio con tarjeta). No suma al
 // Saldo por sí sola: lo que suma es UN movimiento por tarjeta y mes (ver cuotasDelPeriodo).
-// Una "compra anterior" en M_PAGO NO es origen: es un gasto visible que suma por sí mismo (conserva su marca
-// de tarjeta solo para que la pantalla Tarjetas la cuente).
 // "Override" de un mes de cuotas: movimiento real (descripción "Cuotas <tarjeta>", cuotas null, con tarjeta y
 // cuota_inicio = mes) que solo guarda la CATEGORÍA elegida para el movimiento mensual automático (ej. al pagar el
 // resumen se pasa de M_PAGO a TARJETAS). El importe sigue calculándose solo; el override no suma por sí mismo.
 const esOverrideCuotas = (m) => !!m.tarjeta_id && !!m.cuota_inicio && m.cuotas == null && /^cuotas\s/i.test(m.descripcion || '');
-const esOrigenCuotas = (m) => esOverrideCuotas(m) || m.cuotas > 1 || (!!m.tarjeta_id && !!m.cuota_inicio
-  && !(m.categorias && String(m.categorias.nombre || '').toUpperCase() === 'M_PAGO'));
+// Origen de cuotas = compra en 2+ cuotas (o el override de categoría). Las "compras anteriores" ya NO se pliegan dentro de
+// "Cuotas <tarjeta>" en ninguna categoría: son un movimiento visible que suma por sí mismo (la marca de tarjeta solo sirve
+// para que la pantalla Tarjetas las cuente) y quedan pegadas a "Cuotas" con el tooltip de la suma.
+const esOrigenCuotas = (m) => esOverrideCuotas(m) || m.cuotas > 1;
 function cuotasDelPeriodo(origs, start, end) {
   const porClave = {};
   const overrides = {};
