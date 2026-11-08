@@ -143,3 +143,42 @@ create policy "historial_monefy: insert propios" on historial_monefy
 drop policy if exists "historial_monefy: delete propios" on historial_monefy;
 create policy "historial_monefy: delete propios" on historial_monefy
   for delete using (auth.uid() = user_id);
+
+-- 05-06/11/2026 — TARJETAS Y CUOTAS. Tabla de tarjetas (nombre, cierre, vencimiento, límite) y 3 columnas
+-- en movimientos. Todo se puede correr más de una vez. Aplicado en TEST y PROD el 08/11/2026.
+create table if not exists tarjetas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  nombre text not null,
+  cierre date,        -- fecha de cierre del resumen (la carga y ajusta el usuario; la app usa solo el DÍA)
+  vencimiento date,   -- fecha de vencimiento del resumen
+  orden integer,
+  created_at timestamptz not null default now()
+);
+create index if not exists tarjetas_user_idx on tarjetas (user_id, orden);
+alter table tarjetas enable row level security;
+drop policy if exists "tarjetas: select propias" on tarjetas;
+create policy "tarjetas: select propias" on tarjetas
+  for select using (auth.uid() = user_id);
+drop policy if exists "tarjetas: insert propias" on tarjetas;
+create policy "tarjetas: insert propias" on tarjetas
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "tarjetas: update propias" on tarjetas;
+create policy "tarjetas: update propias" on tarjetas
+  for update using (auth.uid() = user_id);
+drop policy if exists "tarjetas: delete propias" on tarjetas;
+create policy "tarjetas: delete propias" on tarjetas
+  for delete using (auth.uid() = user_id);
+
+-- Límite de crédito de la tarjeta (la app muestra límite - cuotas pendientes como "disponible").
+alter table tarjetas add column if not exists limite numeric(14,2);
+
+-- Cuotas y tarjeta en movimientos. null = no es compra con tarjeta; 1 = pago completo en el siguiente
+-- resumen (o "compra anterior" si lleva cuota_inicio); 2 o más = en cuotas (no suma al Saldo: suma un
+-- movimiento mensual "Cuotas <tarjeta>" en M_PAGO que arma la app).
+alter table movimientos add column if not exists cuotas integer
+  check (cuotas is null or cuotas >= 1);
+alter table movimientos add column if not exists tarjeta_id uuid
+  references tarjetas(id) on delete set null;
+-- Mes de la 1ª cuota (siempre día 1). Se fija al guardar con el cierre de ese momento.
+alter table movimientos add column if not exists cuota_inicio date;

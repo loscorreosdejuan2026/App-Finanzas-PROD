@@ -23,6 +23,7 @@
     --muted: #9aa0a8;
     --green: #4cd964;
     --red: #ff5b5b;
+    --yellow: #ffcc00; /* crédito: compra en cuotas, no suma a ingresos/gastos en su mes */
     --accent: #4ea8ff;
     --border: #34383f;
 
@@ -232,6 +233,7 @@
   .mov-item .date { font-size: var(--fs-meta); color: var(--muted); margin-top: 2px; }
   .mov-item .amt.pos { color: var(--green); }
   .mov-item .amt.neg { color: var(--red); }
+  .mov-item .amt.cred, .mov-item .desc .cred { color: var(--yellow); }
 
   /* Buscadores con "×" para limpiar: la × aparece sola cuando hay texto (:placeholder-shown
      también reacciona a cambios hechos por código, no solo a lo que se tipea). */
@@ -256,6 +258,26 @@
      base se guardan tal cual, así que no cambia ninguna búsqueda ni comparación. */
   .cat-tile .name, .mov-item .cat, .resumen-row-main .name, .cat-card-main .name,
   .cat-select-label { text-transform: uppercase; }
+
+  /* Vista Mis tarjetas: mismas fichas que Movimientos, con las cuotas del mes debajo de cada una. */
+  #tarjetasList { padding: 0 20px 100px; display: flex; flex-direction: column; gap: 14px; }
+  .tarjeta-item { height: auto; min-height: 66px; padding-top: 8px; padding-bottom: 8px; }
+  .tarjeta-item .desc { white-space: normal; }
+  .tarjeta-item .cat { text-transform: none; } /* el nombre de la tarjeta se ve tal como se escribió */
+  .tarjetas-mes { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 20px 10px; }
+  .tarjetas-mes .period-label { min-width: 150px; flex: 0 0 auto; font-size: 15px; }
+  .tarjeta-bloque { display: flex; flex-direction: column; gap: 4px; }
+  .cuotas-lista { background: var(--card-2); border-radius: var(--radius-md); padding: 4px 12px; }
+  .cuota-line {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; color: var(--text); text-align: left; padding: 9px 0; font-size: 15px; font-weight: 400;
+    border-bottom: 1px solid var(--border); border-radius: 0;
+  }
+  .cuota-line:last-child { border-bottom: none; }
+  .cuota-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cuota-desc b { color: var(--muted); font-weight: 600; margin-left: 4px; }
+  .cuota-monto { font-weight: 700; color: var(--red); flex-shrink: 0; }
+  .cuota-vacio { color: var(--muted); font-size: var(--fs-meta); padding: 8px 0; }
 
   /* Vista Histórico (Monefy): mismas fichas que Movimientos, solo lectura. */
   /* Filtros + título quedan FIJOS arriba; solo la lista de resultados se desplaza, con su
@@ -338,6 +360,8 @@
   .desc-input-row { display: flex; align-items: center; gap: 8px; }
   .desc-input-row input[type="text"] { flex: 0 0 50%; min-width: 0; }
   .desc-input-row input#movDescripcion.with-usd-field { flex-basis: 25%; }
+  .desc-input-row input#movDescripcion.with-cuotas { flex: 1 1 auto; }
+  .desc-input-row .monto-cuotas { margin-left: auto; }
   .monto-usd-display {
     flex: 0 0 60px; min-width: 0; text-align: center; padding: 10px 4px;
     background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -346,6 +370,11 @@
   .monto-usd-display.active { border-color: var(--accent); color: var(--accent); }
   /* segundo campo U$D (se suma al primero): lleva un "+" adelante para que se entienda */
   .monto-usd-extra::before { content: '+'; color: var(--muted); margin-right: 2px; font-weight: 400; }
+  /* box de cuotas: "6 cuotas" (el número se edita con el teclado, como los de U$D) */
+  .monto-cuotas { flex-basis: 78px; }
+  .monto-cuotas::after { content: ' cuotas'; color: var(--muted); font-size: 11px; font-weight: 400; }
+  .cuotas-fila { margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .cuotas-hint { font-size: var(--fs-meta); color: var(--accent); line-height: 1.4; }
   .usd-total-hint { font-size: var(--fs-meta); color: var(--accent); margin: 6px 2px 0; }
   .checks-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 12px; flex: 1; }
   .check-row-inline {
@@ -594,6 +623,7 @@
               <button type="button" class="export-menu-item" data-tipo="movimientos">Movimientos</button>
               <button type="button" class="export-menu-item" data-tipo="resumen">Categorías</button>
               <button type="button" class="export-menu-item" data-tipo="ahorros">Ahorros</button>
+              <button type="button" class="export-menu-item" data-tipo="tarjetas">Tarjetas</button>
               <button type="button" class="export-menu-item" data-tipo="descfrecuentes">Descripciones</button>
             </div>
           </div>
@@ -610,6 +640,8 @@
         </div>
         <div class="view-toggle-group">
           <!-- Histórico de Monefy: a la izquierda del $; oculto hasta que exista la tabla y tenga filas para este usuario -->
+          <!-- Tarjetas: a la izquierda del reloj. Cargar y editar tus tarjetas (cierre y vencimiento). -->
+          <button type="button" id="openTarjetas" class="icon-btn resumen-icon" title="Mis tarjetas"><i data-lucide="credit-card"></i></button>
           <button type="button" id="openHistorico" class="icon-btn resumen-icon hidden" title="Histórico de Monefy"><i data-lucide="history"></i></button>
           <button type="button" id="openAhorros" class="icon-btn resumen-icon"><i data-lucide="dollar-sign"></i></button>
           <button type="button" id="openResumen" class="icon-btn resumen-icon"><i data-lucide="pie-chart"></i></button>
@@ -662,6 +694,19 @@
       </div>
       <div id="ahorrosView" class="hidden">
         <div id="ahorrosContent"></div>
+      </div>
+      <div id="tarjetasView" class="hidden">
+        <div class="section-title-row" style="padding: 0 20px;">
+          <div class="section-title" style="padding: 0;">Mis tarjetas</div>
+          <button type="button" class="btn-add sm" id="addTarjetaBtn" title="Nueva tarjeta">+</button>
+        </div>
+        <!-- Mes que se está mirando: el resumen (cuotas) de cada tarjeta en ese mes -->
+        <div class="tarjetas-mes hidden">
+          <button class="period-arrow" id="tjPrev">‹</button>
+          <div class="period-label" id="tjMesLabel"></div>
+          <button class="period-arrow" id="tjNext">›</button>
+        </div>
+        <div id="tarjetasList"></div>
       </div>
       <div id="historicoView" class="hidden">
         <div class="historico-sticky">
@@ -717,6 +762,8 @@
           <button type="button" id="movMontoUsd" class="monto-usd-display hidden">0</button>
           <!-- Segundo campo U$D: se SUMA al primero (ej. 600 + 3 = 603) y se guarda el total -->
           <button type="button" id="movMontoUsd2" class="monto-usd-display monto-usd-extra hidden" title="Otro valor en U$D que se suma al anterior">0</button>
+          <!-- Cantidad de cuotas: solo con categoría TARJETAS y una descripción "… Cuotas" -->
+          <button type="button" id="movCuotas" class="monto-usd-display monto-cuotas hidden" title="Cantidad de cuotas">0</button>
           <div class="checks-row">
             <label class="check-row-inline hidden" id="retiroAhorroRow" for="esRetiroAhorro">
               <input type="checkbox" id="esRetiroAhorro">
@@ -729,6 +776,9 @@
           </div>
         </div>
         <div class="usd-total-hint hidden" id="usdTotalHint"></div>
+        <div class="cuotas-fila hidden" id="cuotasFila">
+          <div class="cuotas-hint" id="cuotasHint"></div>
+        </div>
         <div class="desc-suggest-row" id="descSuggestRow"></div>
       </div>
 
@@ -772,6 +822,37 @@
       <div class="error-msg" id="catStepError" style="min-height: 0;"></div>
 
       <button type="button" class="icon-btn" id="backToMonto" title="Atrás"><i data-lucide="arrow-left"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: nueva / editar tarjeta -->
+<div class="modal-overlay hidden" id="tarjetaModal">
+  <div class="modal">
+    <h2 id="tarjetaTitle">Nueva tarjeta</h2>
+    <div style="display:flex;gap:10px">
+      <div class="field" style="flex:1;min-width:0">
+        <label for="tarjetaNombre">Nombre</label>
+        <input type="text" id="tarjetaNombre" placeholder="Ej: Visa Galicia" autocomplete="off">
+      </div>
+      <div class="field" style="flex:1;min-width:0">
+        <label for="tarjetaLimite">Límite de crédito</label>
+        <input type="text" id="tarjetaLimite" inputmode="decimal" placeholder="$ 0" autocomplete="off">
+      </div>
+    </div>
+    <div class="field">
+      <label for="tarjetaCierre">Fecha de cierre</label>
+      <input type="date" id="tarjetaCierre">
+    </div>
+    <div class="field">
+      <label for="tarjetaVence">Fecha de vencimiento</label>
+      <input type="date" id="tarjetaVence">
+    </div>
+    <div class="error-msg" id="tarjetaError"></div>
+    <div class="modal-actions-3">
+      <button class="btn-icon-danger hidden" id="deleteTarjetaBtn" title="Eliminar tarjeta"><i data-lucide="trash-2"></i></button>
+      <button class="btn-secondary" id="cancelTarjeta">Cancelar</button>
+      <button class="btn-primary" id="saveTarjeta">Guardar</button>
     </div>
   </div>
 </div>
@@ -873,6 +954,17 @@
   </div>
 </div>
 
+<!-- MODAL: confirmación propia (reemplaza el confirm() del navegador, que algunos navegadores bloquean) -->
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal">
+    <h2 id="confirmTexto" style="font-size: var(--fs-body); font-weight: 600; margin-bottom: 14px;"></h2>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="confirmNo" style="flex:1;">Cancelar</button>
+      <button class="btn-primary" id="confirmSi" style="flex:1;">Aceptar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://qqttdzxcamszgrbjrnnr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdHRkenhjYW1zemdyYmpybm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjQzODcsImV4cCI6MjEwMDY0MDM4N30.rgK8c1qa-VZt5tto3M1oLddYaOIe2_NdX0NMQDDAVEw';
@@ -888,19 +980,50 @@ if (SUPABASE_URL.includes('fmoschhhpirgzcggxsnf')) document.body.classList.add('
 // En PROD no hace nada (el banner de TEST no se activa) y ese archivo nunca se copia a PROD ni
 // va a GitHub. Sin archivo, el login es el de siempre. El servidor local de TEST
 // (Scripts Testing\servidor_test.py) solo entrega ese archivo a la propia PC, no al resto del WiFi.
+// Además, deja el formulario de login COMPLETADO (por ejemplo después de tocar "Salir") para entrar
+// con un solo toque en "Ingresar".
+let credencialesTest = null;
+function prellenarLoginTest() {
+  if (!credencialesTest) return;
+  document.getElementById('loginEmail').value = credencialesTest.email;
+  document.getElementById('loginPassword').value = credencialesTest.password;
+}
 (async () => {
   if (!document.body.classList.contains('env-test')) return;
   try {
-    const { data } = await sb.auth.getSession();
-    if (data.session) return;
     const r = await fetch('credenciales-test.json', { cache: 'no-store' });
     if (!r.ok) return;
     const { email, password } = await r.json();
     if (!email || !password) return;
+    credencialesTest = { email, password };
+    prellenarLoginTest();
+    const { data } = await sb.auth.getSession();
+    if (data.session) return;
     const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) console.warn('Auto-ingreso de TEST: ' + error.message);
   } catch (e) { /* sin archivo o ilegible: queda el login manual */ }
 })();
+
+
+// ---------- Confirmación propia ----------
+// Los carteles del navegador (confirm) pueden estar bloqueados (navegador integrado, "evitar
+// cuadros de diálogo", PWA): entonces devuelven "no" sin avisar y la acción parece no hacer nada.
+// Esta confirmación es de la propia app y anda en cualquier lado. Uso: if (!(await confirmar('…'))) return;
+let _confirmResolve = null;
+function confirmar(texto, textoSi = 'Aceptar') {
+  return new Promise((resolve) => {
+    document.getElementById('confirmTexto').textContent = texto;
+    document.getElementById('confirmSi').textContent = textoSi;
+    document.getElementById('confirmModal').classList.remove('hidden');
+    _confirmResolve = resolve;
+  });
+}
+function cerrarConfirmar(valor) {
+  document.getElementById('confirmModal').classList.add('hidden');
+  if (_confirmResolve) { const f = _confirmResolve; _confirmResolve = null; f(valor); }
+}
+document.getElementById('confirmSi').addEventListener('click', () => cerrarConfirmar(true));
+document.getElementById('confirmNo').addEventListener('click', () => cerrarConfirmar(false));
 
 let currentTipo = 'ingreso'; // tipo del movimiento que se está creando
 let manageCatTipo = 'ingreso'; // tipo elegido en el form de la sección Categorías
@@ -917,7 +1040,12 @@ let montoUsdCur = 1;
 // Segundo monto en U$D: se suma al primero al guardar (monto_usd = primero + segundo).
 let montoUsd2Str = '0';
 let montoUsd2Cur = 1;
-let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' | 'usd2' — a cuál de los tres escribe el teclado
+// Cuotas de tarjeta (categoría TARJETAS + descripción "… Cuotas"): cantidad de cuotas del gasto.
+let montoCuotasStr = '0';
+let montoCuotasCur = 1;
+let editingMovHadCuotas = false;   // el movimiento en edición ya tenía cuotas guardadas
+let editingMovOrig = null;         // el movimiento en edición tal como vino de la base (para conservar cuota_inicio)
+let activeAmountTarget = 'main'; // 'main' (pesos) | 'usd' | 'usd2' | 'cuotas' — a cuál escribe el teclado
 let currentMovs = []; // últimos movimientos cargados (para abrir edición sin re-consultar)
 let editingMovId = null; // id del movimiento en edición (null = alta nueva)
 let selectedCategoriaId = null; // categoría elegida para el movimiento que se está cargando/editando (Paso 2)
@@ -1026,13 +1154,22 @@ function renderPeriodLabel() {
 async function refreshBalance() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb.from('movimientos')
-    .select('monto, es_retiro, es_retiro_extra, categorias(tipo)')
+    .select('monto, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
-  renderBalance(data || []);
+  // mismo criterio que Movimientos: la compra en 2+ cuotas no suma (renderBalance la salta), sí sus cuotas
+  let origs = [];
+  try {
+    if (!tarjetas.length) await loadTarjetas();
+    const rc = await sb.from('movimientos')
+      .select('*, categorias(id, nombre, tipo, icono, color)').not('tarjeta_id', 'is', null).or('cuotas.gte.2,cuota_inicio.not.is.null');
+    origs = rc.error ? [] : (rc.data || []);
+  } catch (e) { console.error(e); }
+  renderBalance((data || []).concat(cuotasDelPeriodo(origs, start, end)));
 }
 
 function refreshCurrentView() {
+  if (inTarjetasView) return loadTarjetas();
   if (inHistoricoView) return loadHistorico(true);
   if (inResumenView) { refreshBalance(); return loadResumen(); }
   if (inAhorrosView) { refreshBalance(); return loadAhorros(); }
@@ -1091,7 +1228,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
-  if (!confirm('¿Salir de la cuenta?')) return;
+  if (!(await confirmar('¿Salir de la cuenta?'))) return;
   await sb.auth.signOut();
 });
 
@@ -1103,6 +1240,7 @@ sb.auth.onAuthStateChange((event, session) => {
   } else {
     mainScreen.classList.add('hidden');
     loginScreen.classList.remove('hidden');
+    prellenarLoginTest(); // solo hace algo en TEST (si hay credenciales-test.json)
   }
 });
 
@@ -1113,6 +1251,7 @@ async function initData() {
   await loadDescripcionesFrecuentes();
   await loadMovimientos();
   checkHistorico(); // sin await: solo decide si se muestra el botón del Histórico
+  loadTarjetas();   // sin await: deja listas las tarjetas para el desplegable de cuotas
 }
 
 async function loadCategorias() {
@@ -1196,7 +1335,112 @@ function updateMontoUsdVisibility() {
   } else if (wasHidden) {
     activeAmountTarget = 'usd'; // recién aparece: el teclado salta directo a cargar los U$D
   }
+  updateCuotasVisibility();
   renderAmountDisplay();
+}
+
+// ---------- Cuotas de tarjeta ----------
+// El box de cuotas aparece con la categoría TARJETAS y una descripción de tarjeta ("Master MP",
+// "Visa Gal"…), igual que el de U$D aparece con FCI U$D. El importe que se carga es el TOTAL de la
+// compra; la app lo divide y lo reparte mes a mes según el día de cierre de la tarjeta (pantalla
+// Tarjetas). Si NO se completan las cuotas, se toma como pago completo en el siguiente resumen
+// (1 cuota). El movimiento se guarda igual que siempre.
+const MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function diaDeCierre(tarjeta) {
+  return tarjeta && tarjeta.cierre ? Number(tarjeta.cierre.slice(8, 10)) : null;
+}
+
+// Reparte `total` en `n` cuotas. La 1.ª cuota cae en el resumen que cierra el día `cierreDia`
+// del mes de la compra si la compra es hasta ese día (inclusive), y si no, en el del mes
+// siguiente; las demás van mes a mes. El resumen se identifica por el mes en que cierra.
+// Las cuotas son iguales (en centavos) y la última absorbe la diferencia.
+function calcularCuotas(fechaISO, total, n, cierreDia) {
+  const [y, m, d] = fechaISO.split('-').map(Number);
+  const ultimoDia = new Date(y, m, 0).getDate();
+  let mes = m - 1;                                  // 0-based
+  let anio = y;
+  if (d > Math.min(cierreDia, ultimoDia)) { mes++; }
+  const totalCent = Math.round(Number(total) * 100);
+  const base = Math.floor(totalCent / n);
+  const out = [];
+  for (let k = 1; k <= n; k++) {
+    const cent = k === n ? totalCent - base * (n - 1) : base;
+    out.push({ n: k, y: anio + Math.floor((mes + k - 1) / 12), m: (mes + k - 1) % 12, monto: cent / 100 });
+  }
+  return out;
+}
+
+// Tarjetas que coinciden con una descripción tipo "Master MP" o "Visa Gal" (sin distinguir
+// mayúsculas, ignorando la nota que va después del "//" y la palabra "cuotas" si estuviera).
+function tarjetasPorDescripcion(desc) {
+  const nombre = String(desc || '').replace(/\s*\/\/.*$/, '').replace(/cuotas?/i, '').trim().toLowerCase();
+  if (!nombre) return [];
+  const exacta = tarjetas.filter(t => t.nombre.trim().toLowerCase() === nombre);
+  if (exacta.length) return exacta;
+  return tarjetas.filter(t => {
+    const n = t.nombre.trim().toLowerCase();
+    return n.startsWith(nombre) || nombre.startsWith(n);
+  });
+}
+// La tarjeta del movimiento sale de la DESCRIPCIÓN (no hay desplegable): es la única tarjeta de
+// "Mis tarjetas" que coincide con ella. Si coinciden varias, hay que usar el nombre completo.
+function tarjetaDelMovimiento() {
+  const cat = categorias.find(c => c.id === selectedCategoriaId);
+  if (!cat || cat.nombre.toUpperCase() !== 'TARJETAS' || cat.tipo !== 'egreso') return null;
+  const c = tarjetasPorDescripcion(document.getElementById('movDescripcion').value);
+  return c.length === 1 ? c[0] : null;
+}
+
+function updateCuotasVisibility() {
+  const cat = categorias.find(c => c.id === selectedCategoriaId);
+  const desc = document.getElementById('movDescripcion').value;
+  const esTarjetas = !!cat && cat.nombre.toUpperCase() === 'TARJETAS' && cat.tipo === 'egreso';
+  const coinciden = esTarjetas ? tarjetasPorDescripcion(desc).length : 0;
+  // El box aparece con la categoría TARJETAS cuando la descripción es de UNA de tus tarjetas
+  // ("Master MP", "Visa Gal"…), sin necesidad de escribir "cuotas". Si la descripción coincide con
+  // varias tarjetas solo se muestra el aviso.
+  const show = coinciden === 1;
+  document.getElementById('movCuotas').classList.toggle('hidden', !show);
+  // la leyenda solo aparece si hay ambigüedad (varias tarjetas); con una sola no se muestra nada
+  document.getElementById('cuotasFila').classList.toggle('hidden', coinciden < 2);
+  document.getElementById('movDescripcion').classList.toggle('with-usd-field', isAhorroUsd());
+  document.getElementById('movDescripcion').classList.toggle('with-cuotas', show);
+  // "Frecuente" no tiene sentido con una tarjeta (la descripción ya es el nombre de la tarjeta)
+  document.querySelector('label[for="saveAsFreqDesc"]').classList.toggle('hidden', show);
+  if (show) document.getElementById('saveAsFreqDesc').checked = false;
+  if (!show) {
+    montoCuotasStr = '0';
+    montoCuotasCur = 1;
+    if (activeAmountTarget === 'cuotas') activeAmountTarget = 'main';
+  }
+}
+
+function actualizarHintCuotas() {
+  const hint = document.getElementById('cuotasHint');
+  if (!hint || document.getElementById('cuotasFila').classList.contains('hidden')) return;
+  const n = parseInt(montoCuotasStr, 10) || 0;
+  const t = tarjetaDelMovimiento();
+  const total = parseFloat(montoStr.replace(',', '.')) || 0;
+  if (!tarjetas.length) { hint.textContent = 'Primero cargá tus tarjetas (botón de tarjetas).'; return; }
+  if (!t) {
+    const varias = tarjetasPorDescripcion(document.getElementById('movDescripcion').value).map(x => x.nombre).join(', ');
+    hint.textContent = `La descripción coincide con varias tarjetas (${varias}). Usá el nombre completo.`;
+    return;
+  }
+  const dia = diaDeCierre(t);
+  if (!dia) { hint.textContent = `Cargá la fecha de cierre de ${t.nombre} en el apartado de tarjetas.`; return; }
+  if (!total) { hint.textContent = `${t.nombre} · cierra el día ${dia}. Cargá el importe total.`; return; }
+  const fecha = movFechaInput.value || hoyLocalISO();
+  if (n < 2) {
+    // sin cuotas: pago completo en el siguiente resumen
+    const p = calcularCuotas(fecha, total, 1, dia)[0];
+    hint.textContent = `${t.nombre} · cierra el día ${dia} · sin cuotas: ${fmt(p.monto)} completos en el resumen de ${MESES_LARGO[p.m]} ${p.y}`;
+    return;
+  }
+  const cuotas = calcularCuotas(fecha, total, n, dia);
+  const p = cuotas[0], u = cuotas[cuotas.length - 1];
+  hint.textContent = `${t.nombre} · cierra el día ${dia} · ${n} cuotas de ${fmt(p.monto)} · la 1.ª entra en el resumen de ${MESES_LARGO[p.m]} ${p.y} y la última en ${MESES_LARGO[u.m]} ${u.y}`;
 }
 
 function updateCatSelectDisplay() {
@@ -1245,9 +1489,15 @@ document.getElementById('catGrid').addEventListener('click', (e) => {
 
 function renderDescSuggestions() {
   const row = document.getElementById('descSuggestRow');
-  const sugerencias = descripcionesFrecuentes.filter(d => d.categoria_id === selectedCategoriaId);
-  row.innerHTML = sugerencias.map(d => `
-    <button type="button" class="desc-suggest-chip" data-texto="${esc(d.texto)}">${esc(d.texto)}</button>`).join('');
+  const cat = categorias.find(c => c.id === selectedCategoriaId);
+  // Con la categoría TARJETAS los chips son SOLO las tarjetas cargadas en "Mis tarjetas" (nada de
+  // las descripciones frecuentes viejas): elegir una es elegir la tarjeta.
+  const esTarjetas = !!cat && cat.nombre.toUpperCase() === 'TARJETAS' && cat.tipo === 'egreso';
+  const textos = esTarjetas
+    ? tarjetas.map(t => t.nombre)
+    : descripcionesFrecuentes.filter(d => d.categoria_id === selectedCategoriaId).map(d => d.texto);
+  row.innerHTML = textos.map(t => `
+    <button type="button" class="desc-suggest-chip" data-texto="${esc(t)}">${esc(t)}</button>`).join('');
 }
 
 document.getElementById('descSuggestRow').addEventListener('click', (e) => {
@@ -1270,6 +1520,13 @@ document.getElementById('movMontoUsd').addEventListener('click', (e) => {
   keypadField.classList.remove('hidden');
   renderAmountDisplay();
 });
+document.getElementById('movCuotas').addEventListener('click', (e) => {
+  activeAmountTarget = 'cuotas';
+  reemplazarCuotas = true; // el primer número que se tipee reemplaza las cuotas (no hay que borrar antes)
+  montoCuotasCur = cursorDesdeToque(document.getElementById('movCuotas'), e.clientX, montoCuotasStr);
+  keypadField.classList.remove('hidden');
+  renderAmountDisplay();
+});
 document.getElementById('movMontoUsd2').addEventListener('click', (e) => {
   activeAmountTarget = 'usd2';
   montoUsd2Cur = cursorDesdeToque(document.getElementById('movMontoUsd2'), e.clientX, montoUsd2Str);
@@ -1283,7 +1540,86 @@ document.getElementById('amountDisplay').addEventListener('click', (e) => {
   renderAmountDisplay();
 });
 
+let cuotasOrig = []; // compras en cuotas originales (para abrirlas desde cada cuota mensual)
+// Filas virtuales: una por cada cuota de las compras en 2+ cuotas que cae entre start y end.
+// La usan Movimientos y el Resumen por categoría, así ambos cuentan lo mismo.
+// Cuotas de una compra: si tiene cuota_inicio (mes de la 1ª cuota fijado al guardarla) se usa ese
+// mes; si no (compras viejas), se calcula con el día de cierre actual de la tarjeta.
+function cuotasDeCompra(m, dia) {
+  const cs = calcularCuotas(m.fecha, m.monto, m.cuotas, dia || 1);
+  if (m.cuota_inicio) {
+    const [y, mo] = m.cuota_inicio.split('-').map(Number);
+    cs.forEach((c, i) => { const k = y * 12 + (mo - 1) + i; c.y = Math.floor(k / 12); c.m = k % 12; });
+  }
+  return cs;
+}
+// Orden de movimientos de un mismo día: por importe (mayor arriba), con UNA excepción: "compras
+// anteriores" y "Cuotas <tarjeta>" de la misma tarjeta y fecha van siempre juntas (la de mayor importe
+// arriba), ubicadas donde corresponde al mayor de los dos importes.
+// Clave del par "compras anteriores" + "Cuotas <tarjeta>" (misma tarjeta y fecha); null si no es de ese par.
+function claveParTarjeta(m) {
+  let t = null;
+  if (m._agrupada) t = m.tarjeta_id;
+  else if (/compras anteriores/i.test(m.descripcion || '')) {
+    const c = tarjetasPorDescripcion(m.descripcion || '');
+    if (c.length === 1) t = c[0].id;
+  }
+  return t ? t + '|' + m.fecha : null;
+}
+function comparadorMovs(movs) {
+  const clave = claveParTarjeta;
+  const max = {};
+  for (const m of movs) { const k = clave(m); if (k) max[k] = Math.max(max[k] || 0, Number(m.monto)); }
+  const ef = (m) => { const k = clave(m); return k ? max[k] : Number(m.monto); };
+  return (a, b) => {
+    const d = ef(b) - ef(a);
+    if (d) return d;
+    const ka = clave(a), kb = clave(b);
+    if (ka !== kb) return String(ka).localeCompare(String(kb));
+    return Number(b.monto) - Number(a.monto); // dentro del par, el mayor arriba
+  };
+}
+// "Origen de cuotas": compra en 2+ cuotas o "compras anteriores" (cuota_inicio con tarjeta). No suma al
+// Saldo por sí sola: lo que suma es UN movimiento por tarjeta y mes (ver cuotasDelPeriodo).
+// Una "compra anterior" en M_PAGO NO es origen: es un gasto visible que suma por sí mismo (conserva su marca
+// de tarjeta solo para que la pantalla Tarjetas la cuente).
+const esOrigenCuotas = (m) => m.cuotas > 1 || (!!m.tarjeta_id && !!m.cuota_inicio
+  && !(m.categorias && String(m.categorias.nombre || '').toUpperCase() === 'M_PAGO'));
+function cuotasDelPeriodo(origs, start, end) {
+  const porClave = {};
+  for (const m of origs) {
+    if (!esOrigenCuotas(m)) continue; // una "compra anterior" en M_PAGO suma por sí misma, no dentro de Cuotas
+    const t = tarjetas.find(x => x.id === m.tarjeta_id);
+    const dia = t ? diaDeCierre(t) : null;
+    if (!dia && !m.cuota_inicio) continue;
+    let cs;
+    if (m.cuotas > 1) cs = cuotasDeCompra(m, dia);
+    else { const [y, mo] = m.cuota_inicio.split('-').map(Number); cs = [{ n: 1, y, m: mo - 1, monto: Number(m.monto) }]; }
+    for (const c of cs) {
+      // Todo lo que vence en el mes de una tarjeta se junta en UN solo movimiento (día 1 del mes),
+      // en la categoría M_PAGO (lo que hay que pagar), descripción "Cuotas <tarjeta>".
+      const ym = `${c.y}-${String(c.m + 1).padStart(2, '0')}`;
+      const f = `${ym}-01`;
+      if (f < start || f > end) continue;
+      const k = m.tarjeta_id + '|' + ym;
+      const g = porClave[k] = porClave[k] || { fecha: f, tarjeta_id: m.tarjeta_id, monto: 0, base: m, nombre: t ? t.nombre : 'tarjeta' };
+      g.monto += Number(c.monto);
+      (g.det = g.det || []).push({ desc: notaDeCuota(m.descripcion), n: c.n, de: m.cuotas > 1 ? m.cuotas : 0, monto: Number(c.monto) });
+    }
+  }
+  const mpago = categorias.find(c => c.nombre.toUpperCase() === 'M_PAGO' && c.tipo === 'egreso');
+  return Object.entries(porClave).map(([k, g]) => {
+    const cat = mpago ? { id: mpago.id, nombre: mpago.nombre, tipo: mpago.tipo, icono: mpago.icono, color: mpago.color } : g.base.categorias;
+    return Object.assign({}, g.base, {
+      id: 'cuotas-' + k, fecha: g.fecha, monto: Math.round(g.monto * 100) / 100, cuotas: null, cuota_inicio: null,
+      categoria_id: cat ? cat.id : g.base.categoria_id, categorias: cat, es_retiro: false, es_retiro_extra: false,
+      descripcion: 'Cuotas ' + g.nombre, _agrupada: true, _detalle: g.det || []
+    });
+  });
+}
+let loadMovSeq = 0;  // si se pide otra carga mientras una está en curso, la vieja se descarta (evita cuotas duplicadas)
 async function loadMovimientos() {
+  const seq = ++loadMovSeq;
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
@@ -1293,7 +1629,21 @@ async function loadMovimientos() {
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
-  currentMovs = data || [];
+  if (seq !== loadMovSeq) return;
+  const movs = data || [];
+  // Compras en cuotas (2 o más): el movimiento queda registrado en su fecha pero NO suma al Saldo
+  // (renderBalance lo salta); en cambio cada mes aparece su cuota como un gasto más.
+  try {
+    if (!tarjetas.length) await loadTarjetas();
+    const rc = await sb.from('movimientos')
+      .select('*, categorias(id, nombre, tipo, icono, color)').not('tarjeta_id', 'is', null).or('cuotas.gte.2,cuota_inicio.not.is.null');
+    if (seq !== loadMovSeq) return;
+    cuotasOrig = rc.error ? [] : (rc.data || []);
+    movs.push(...cuotasDelPeriodo(cuotasOrig, start, end));
+    movs.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+  } catch (e) { console.error(e); }
+  if (seq !== loadMovSeq) return;
+  currentMovs = movs;
   document.getElementById('movListTitle').textContent = 'Movimientos';
   // Un Retiro Extra es plata que sale del pozo de Ahorros, no del pozo de la
   // diaria — se ve y se edita desde la vista Ahorros, no acá.
@@ -1412,37 +1762,45 @@ async function exportMovimientosCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('fecha, monto, descripcion, es_retiro, es_retiro_extra, categorias(nombre, tipo)')
+    .select('fecha, monto, descripcion, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
     .gte('fecha', start)
     .lte('fecha', end)
     .order('fecha', { ascending: true });
   if (error) { console.error(error); return; }
+  // Compras en 2+ cuotas: mismo criterio que la app → sale cada cuota en su mes, no la compra entera.
+  const movs = data.filter(m => !esOrigenCuotas(m)).concat(cuotasDelPeriodo(await cargarComprasEnCuotas(), start, end))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   // Mismo criterio que el Saldo de la pantalla: un Retiro Extra no cuenta (es del pozo de
   // Ahorros) y un Retiro de AHORROS libera saldo, o sea que suma en vez de restar. Así la
   // columna Monto del CSV da el mismo saldo que se ve en la app.
-  const filas = (data || []).filter(m => !m.es_retiro_extra).map(m => {
+  const filas = movs.filter(m => !m.es_retiro_extra).map(m => {
     const tipo = m.categorias ? m.categorias.tipo : null;
     const signo = (tipo === 'egreso' && !m.es_retiro) ? -1 : 1;
     const tipoStr = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
-    return [m.fecha, tipoStr, categoria, m.descripcion || '', signo * Number(m.monto)];
+    // la cuota va en su propia columna (para filtrar), no pegada a la descripción
+    const desc = (m.descripcion || '').replace(/ · cuota \d+\/\d+$/, '');
+    const cuota = m._cuotaN ? `${m._cuotaN}/${m._cuotaDe}` : '';
+    return [m.fecha, tipoStr, categoria, desc, cuota, signo * Number(m.monto)];
   });
 
   descargarTabla(`movimientos_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
-    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'], filas, { fechaCols: [0], numCols: [4] });
+    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Cuota', 'Monto'], filas, { fechaCols: [0], numCols: [5] });
 }
 
 async function exportResumenCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('monto, categoria_id, es_retiro, es_retiro_extra, categorias(nombre, tipo)')
+    .select('monto, categoria_id, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
+  // igual que la pantalla: la compra en 2+ cuotas no cuenta en su mes, sí cada cuota
+  const movs = data.filter(m => !esOrigenCuotas(m)).concat(cuotasDelPeriodo(await cargarComprasEnCuotas(), start, end));
 
   const groups = {};
-  for (const m of data || []) {
+  for (const m of movs) {
     if (!m.categorias) continue;
     if (m.es_retiro_extra) continue; // aislado, se exporta desde "Ahorros"
     const key = m.categoria_id;
@@ -1456,6 +1814,38 @@ async function exportResumenCSV() {
 
   descargarTabla(`resumen_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
     ['Categoría', 'Tipo', 'Cantidad de movimientos', 'Monto total'], filas, { numCols: [2, 3] });
+}
+
+// Compras en 2 o más cuotas (todas, de cualquier fecha), para armar sus cuotas mensuales.
+async function cargarComprasEnCuotas() {
+  try {
+    if (!tarjetas.length) await loadTarjetas();
+    const rc = await sb.from('movimientos')
+      .select('*, categorias(id, nombre, tipo, icono, color)').not('tarjeta_id', 'is', null).or('cuotas.gte.2,cuota_inicio.not.is.null');
+    return rc.error ? [] : (rc.data || []);
+  } catch (e) { console.error(e); return []; }
+}
+
+// Lo que hay que pagar por tarjeta y por mes (desde el mes actual), igual que "Cuotas por mes".
+// Una fila por cuota; el subtotal de Monto da el consumo total y, filtrando el Mes, el de ese mes.
+async function exportTarjetasCSV() {
+  if (!tarjetas.length) await loadTarjetas();
+  const rc = await sb.from('movimientos').select('*').gte('cuotas', 1);
+  if (rc.error) { console.error(rc.error); return; }
+  const filas = [];
+  for (const t of tarjetas) {
+    const meses = mesesDeTarjeta(t, rc.data || []);
+    for (const k of Object.keys(meses).map(Number).sort((a, b) => a - b)) {
+      const mes = `${Math.floor(k / 12)}-${String(k % 12 + 1).padStart(2, '0')}-01`;
+      for (const x of meses[k]) {
+        filas.push([t.nombre, mes, notaDeCuota(x.m.descripcion),
+          x.anterior ? 'anterior' : `${x.c.n}/${x.m.cuotas}`, x.m.fecha, x.c.monto]);
+      }
+    }
+  }
+  const hoy = hoyLocalISO().split('-').reverse().join('-');
+  descargarTabla(`tarjetas_${hoy}_${horaFilenameSlug()}`,
+    ['Tarjeta', 'Mes', 'Detalle', 'Cuota', 'Fecha compra', 'Monto'], filas, { fechaCols: [1, 4], numCols: [5] });
 }
 
 async function exportAhorrosCSV() {
@@ -1513,6 +1903,7 @@ exportMenu.addEventListener('click', (e) => {
   if (item.dataset.tipo === 'movimientos') exportMovimientosCSV();
   else if (item.dataset.tipo === 'resumen') exportResumenCSV();
   else if (item.dataset.tipo === 'ahorros') exportAhorrosCSV();
+  else if (item.dataset.tipo === 'tarjetas') exportTarjetasCSV();
   else if (item.dataset.tipo === 'descfrecuentes') exportDescFrecuentesCSV();
 });
 
@@ -1523,6 +1914,7 @@ function renderBalance(movs) {
   let ingresos = 0, egresos = 0;
   for (const m of movs) {
     if (m.es_retiro_extra) continue; // no toca el Balance general, solo la vista Ahorros
+    if (esOrigenCuotas(m)) continue; // compra en cuotas / compras anteriores: solo registro; suma el movimiento mensual de la tarjeta
     const tipo = m.categorias ? m.categorias.tipo : null;
     if (tipo === 'ingreso') ingresos += Number(m.monto);
     // Un retiro de AHORROS resta del total de Gastos (libera saldo) en vez de sumar
@@ -1556,7 +1948,8 @@ function movItemHtml(m) {
   const catName = (m.categorias ? m.categorias.nombre : '(sin categoría)') + retiroTag;
   // Un retiro libera saldo (resta del Gasto), así que se muestra igual que un ingreso.
   const sign = (tipo === 'ingreso' || m.es_retiro) ? '+' : '−';
-  const cls = (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
+  const credito = esOrigenCuotas(m) && !m._agrupada; // compra en cuotas / anteriores = crédito (amarillo)
+  const cls = credito ? 'cred' : (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
   const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
   const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
   const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
@@ -1565,7 +1958,7 @@ function movItemHtml(m) {
         <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
         <div class="mid">
           <div class="cat">${esc(catName)}</div>
-          ${m.descripcion ? `<div class="desc">${esc(m.descripcion)}${m.monto_usd != null ? ' · U$D ' + Number(m.monto_usd).toLocaleString('es-AR') : ''}</div>` : ''}
+          ${m.descripcion ? `<div class="desc">${esc(m.descripcion)}${m.monto_usd != null ? ' · U$D ' + Number(m.monto_usd).toLocaleString('es-AR') : ''}${credito && m.cuotas > 1 ? ' · <span class="cred">' + m.cuotas + ' cuotas</span>' : ''}</div>` : ''}
         </div>
         <div class="right">
           <div class="amt ${cls}">${sign} ${fmt(m.monto)}</div>
@@ -1609,10 +2002,11 @@ function renderMovimientos(movs, emptyMsg) {
   // Saldo. Se ordena acá y no en la consulta para que aplique igual al buscador.
   const esIngreso = (m) => (m.categorias ? m.categorias.tipo : 'egreso') === 'ingreso';
   for (const g of grupos) {
+    const cmp = comparadorMovs(g.movs);
     g.movs.sort((a, b) => {
       const ai = esIngreso(a), bi = esIngreso(b);
       if (ai !== bi) return ai ? -1 : 1;
-      return Number(b.monto) - Number(a.monto);
+      return cmp(a, b);
     });
   }
   list.innerHTML = grupos.map(g => {
@@ -1641,7 +2035,11 @@ document.getElementById('movList').addEventListener('click', (e) => {
   }
   const item = e.target.closest('.mov-item');
   if (!item) return;
-  const mov = currentMovs.find(m => m.id === item.dataset.id);
+  // una cuota mensual abre la compra original (misma id), no la fila virtual
+  const mov = cuotasOrig.find(m => m.id === item.dataset.id) || currentMovs.find(m => m.id === item.dataset.id);
+  const am = e.target.closest('.right');
+  if (mov && am && mostrarSumaTip(mov, currentMovs, am)) return;
+  if (mov && mov._agrupada) { toggleDetalleCuotas(item, mov); return; }
   if (mov) openEditMovModal(mov);
 });
 
@@ -1712,6 +2110,7 @@ function updateFechaPill() {
   document.getElementById('fechaPillText').textContent = textoFechaPill(movFechaInput.value);
 }
 movFechaInput.addEventListener('change', updateFechaPill);
+movFechaInput.addEventListener('change', renderAmountDisplay); // la fecha define en qué resumen cae la 1.ª cuota
 
 // En desktop, hacer clic sobre un <input type="date"> NO abre el calendario: solo lo
 // abre el iconito de la derecha, que acá es invisible (el input está con opacity 0
@@ -1836,6 +2235,11 @@ function renderAmountDisplay() {
   const verHint = !usd2Btn.classList.contains('hidden') && usd2 > 0;
   hint.classList.toggle('hidden', !verHint);
   if (verHint) hint.textContent = `Total U$D ${(usd1 + usd2).toLocaleString('es-AR', { maximumFractionDigits: 2 })} (${usd1.toLocaleString('es-AR')} + ${usd2.toLocaleString('es-AR')})`;
+
+  const cuotasBtn = document.getElementById('movCuotas');
+  cuotasBtn.innerHTML = montoHtml(montoCuotasStr, montoCuotasCur);
+  cuotasBtn.classList.toggle('active', activeAmountTarget === 'cuotas');
+  actualizarHintCuotas();
 }
 
 function openModal(tipo) {
@@ -1847,9 +2251,13 @@ function openModal(tipo) {
   montoStr = '0';
   montoUsdStr = '0';
   montoUsd2Str = '0';
+  montoCuotasStr = '0';
   montoCur = 1;
   montoUsdCur = 1;
   montoUsd2Cur = 1;
+  montoCuotasCur = 1;
+  editingMovHadCuotas = false;
+  editingMovOrig = null;
   activeAmountTarget = 'main';
   renderAmountDisplay();
   document.getElementById('movDescripcion').value = '';
@@ -1869,6 +2277,7 @@ function openModal(tipo) {
 }
 
 function openEditMovModal(mov) {
+  if (mov && mov._agrupada) { showTarjetasView(); return; } // el movimiento mensual de cuotas se ve en Tarjetas
   currentTipo = mov.categorias ? mov.categorias.tipo : 'egreso';
   editingMovId = mov.id;
   selectedCategoriaId = mov.categoria_id;
@@ -1878,6 +2287,10 @@ function openEditMovModal(mov) {
   montoUsdStr = mov.monto_usd != null ? String(mov.monto_usd).replace('.', ',') : '0';
   montoUsd2Str = '0';               // el segundo valor U$D arranca en 0: lo guardado es el total
   montoUsd2Cur = 1;
+  montoCuotasStr = mov.cuotas > 1 ? String(mov.cuotas) : '0';   // 0 = sin cuotas (pago completo)
+  montoCuotasCur = montoCuotasStr.length;
+  editingMovHadCuotas = mov.cuotas != null;
+  editingMovOrig = mov;
   montoCur = montoStr.length;       // al editar, el cursor arranca al final y se puede mover
   montoUsdCur = montoUsdStr.length; // tocando un dígito o con las flechas
   activeAmountTarget = 'main';
@@ -1910,8 +2323,13 @@ function openEditMovModal(mov) {
 function pressKey(key) {
   const isUsd = activeAmountTarget === 'usd';
   const isUsd2 = activeAmountTarget === 'usd2';
-  let str = isUsd ? montoUsdStr : isUsd2 ? montoUsd2Str : montoStr;
-  let cur = Math.max(0, Math.min(isUsd ? montoUsdCur : isUsd2 ? montoUsd2Cur : montoCur, str.length));
+  const isCuotas = activeAmountTarget === 'cuotas';
+  let str = isUsd ? montoUsdStr : isUsd2 ? montoUsd2Str : isCuotas ? montoCuotasStr : montoStr;
+  let cur = Math.max(0, Math.min(isUsd ? montoUsdCur : isUsd2 ? montoUsd2Cur : isCuotas ? montoCuotasCur : montoCur, str.length));
+  const strAntes = str, curAntes = cur;
+  if (isCuotas && key === ',') return; // las cuotas son un número entero
+  if (isCuotas && reemplazarCuotas && /^[0-9]$/.test(key)) { str = '0'; cur = 1; }
+  if (isCuotas) reemplazarCuotas = false;
 
   if (key === 'left') cur = Math.max(0, cur - 1);
   else if (key === 'right') cur = Math.min(str.length, cur + 1);
@@ -1936,9 +2354,11 @@ function pressKey(key) {
     else if (cur > z) { str = str.slice(z); cur -= z; }
   }
   cur = Math.max(0, Math.min(cur, str.length));
+  if (isCuotas && str.length > 2) { str = strAntes; cur = curAntes; } // hasta 99 cuotas
 
   if (isUsd) { montoUsdStr = str; montoUsdCur = cur; }
   else if (isUsd2) { montoUsd2Str = str; montoUsd2Cur = cur; }
+  else if (isCuotas) { montoCuotasStr = str; montoCuotasCur = cur; }
   else { montoStr = str; montoCur = cur; }
   renderAmountDisplay();
 }
@@ -1952,9 +2372,44 @@ document.getElementById('keypad').addEventListener('click', (e) => {
 // Permite cargar el monto con el teclado físico (útil en desktop) cuando el
 // modal de carga está abierto en la Pantalla 1 y el foco no está en un campo
 // de texto (Descripción, fecha, etc.) — si no, los dígitos van a ese campo.
+// Tab / Shift+Tab en el modal: recorre Monto → Descripción → Cuotas → U$D → U$D 2 (solo los visibles).
+let reemplazarCuotas = false;
+function camposTabModal() {
+  const vis = id => !document.getElementById(id).classList.contains('hidden');
+  const c = ['main', 'desc'];
+  if (vis('movCuotas')) c.push('cuotas');
+  if (vis('movMontoUsd')) c.push('usd');
+  if (vis('movMontoUsd2')) c.push('usd2');
+  return c;
+}
+function irACampoModal(t) {
+  if (t === 'desc') {
+    movDescripcionInput.focus();
+    const fin = movDescripcionInput.value.length;
+    movDescripcionInput.setSelectionRange(fin, fin);
+    return;
+  }
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  activeAmountTarget = t;
+  if (t === 'main') montoCur = montoStr.length;
+  else if (t === 'usd') montoUsdCur = montoUsdStr.length;
+  else if (t === 'usd2') montoUsd2Cur = montoUsd2Str.length;
+  else if (t === 'cuotas') { montoCuotasCur = montoCuotasStr.length; reemplazarCuotas = true; }
+  keypadField.classList.remove('hidden');
+  renderAmountDisplay();
+}
+
 document.addEventListener('keydown', (e) => {
   if (movModal.classList.contains('hidden') || stepMonto.classList.contains('hidden')) return;
   const tag = (e.target.tagName || '').toLowerCase();
+  if (e.key === 'Tab' && (tag !== 'input' || e.target === movDescripcionInput)) {
+    e.preventDefault();
+    const campos = camposTabModal();
+    const actual = document.activeElement === movDescripcionInput ? 'desc' : activeAmountTarget;
+    const i = Math.max(0, campos.indexOf(actual));
+    irACampoModal(campos[(i + (e.shiftKey ? campos.length - 1 : 1)) % campos.length]);
+    return;
+  }
   if (tag === 'input' || tag === 'textarea') return;
   if (e.key >= '0' && e.key <= '9') { pressKey(e.key); e.preventDefault(); }
   else if (e.key === ',' || e.key === '.') { pressKey(','); e.preventDefault(); }
@@ -2048,8 +2503,39 @@ async function guardarMovimiento(categoria_id) {
     if (!monto_usd || monto_usd <= 0) { movError.textContent = 'Ingresá el monto en U$D'; return; }
   }
 
+  // Cuotas de tarjeta: solo se tocan esas columnas si el box de cuotas está a la vista (o si el
+  // movimiento ya las tenía y hay que limpiarlas), así los movimientos comunes no cambian.
+  // Sin cuotas completadas = pago completo (1 cuota) en el siguiente resumen de la tarjeta.
+  let datosCuotas = {};
+  const esAnterior = !!(editingMovOrig && editingMovOrig.tarjeta_id && editingMovOrig.cuota_inicio && !(editingMovOrig.cuotas > 1));
+  if (!document.getElementById('movCuotas').classList.contains('hidden')) {
+    const nCuotas = Math.max(1, parseInt(montoCuotasStr, 10) || 0);
+    const t = tarjetaDelMovimiento(); // sale de la descripción
+    if (nCuotas >= 2 && !t) { movError.textContent = 'La descripción tiene que ser el nombre de una tarjeta'; return; }
+    if (nCuotas >= 2 && !diaDeCierre(t)) { movError.textContent = `Cargá la fecha de cierre de ${t.nombre} en el apartado de tarjetas`; return; }
+    if (t) {
+      datosCuotas = { cuotas: nCuotas, tarjeta_id: t.id };
+      // Mes de la 1ª cuota: se fija al guardar con el cierre que tiene HOY la tarjeta, así si después se
+      // actualiza el cierre (tarjetas con cierre variable) las compras ya cargadas no se mueven de mes.
+      // Al editar se conserva, salvo que cambie la fecha o la tarjeta.
+      const o = editingMovOrig;
+      const conservar = o && o.cuota_inicio && o.fecha === fecha && o.tarjeta_id === t.id;
+      if (nCuotas >= 2 && !conservar) {
+        const c1 = calcularCuotas(fecha, monto, nCuotas, diaDeCierre(t))[0];
+        datosCuotas.cuota_inicio = `${c1.y}-${String(c1.m + 1).padStart(2, '0')}-01`;
+      } else if (nCuotas < 2) {
+        // una "compra anterior" conserva su marca y sigue el mes de su fecha; un pago común no lleva
+        datosCuotas.cuota_inicio = o && o.cuota_inicio && !(o.cuotas > 1) ? fecha.slice(0, 8) + '01' : null;
+      }
+    }
+    else if (editingMovHadCuotas && !esAnterior) datosCuotas = { cuotas: null, tarjeta_id: null, cuota_inicio: null };
+  } else if (esAnterior) {
+    // "Compra anterior" pasada a otra categoría (ej. M_PAGO): conserva su marca de tarjeta para que Tarjetas la siga contando
+    datosCuotas = { cuota_inicio: fecha.slice(0, 8) + '01' };
+  } else if (editingMovHadCuotas) datosCuotas = { cuotas: null, tarjeta_id: null, cuota_inicio: null };
+
   if (editingMovId) {
-    const update = { monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd };
+    const update = { monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd, ...datosCuotas };
     if (es_retiro_extra !== undefined) update.es_retiro_extra = es_retiro_extra;
     const { error } = await sb.from('movimientos')
       .update(update)
@@ -2059,7 +2545,7 @@ async function guardarMovimiento(categoria_id) {
     const { data: userData } = await sb.auth.getUser();
     const { error } = await sb.from('movimientos').insert({
       monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd,
-      es_retiro_extra: false, user_id: userData.user.id
+      es_retiro_extra: false, user_id: userData.user.id, ...datosCuotas
     });
     if (error) { movError.textContent = error.message; return; }
   }
@@ -2090,7 +2576,11 @@ async function guardarMovimiento(categoria_id) {
 
 deleteMovBtn.addEventListener('click', async () => {
   if (!editingMovId) return;
-  if (!confirm('¿Eliminar este movimiento?')) return;
+  // Una compra en cuotas se borra entera: desaparecen todas sus cuotas (este mes y los siguientes).
+  const enCuotas = editingMovOrig && editingMovOrig.cuotas > 1;
+  if (!(await confirmar(enCuotas
+    ? `¿Eliminar esta compra? Se borran sus ${editingMovOrig.cuotas} cuotas de todos los meses.`
+    : '¿Eliminar este movimiento?'))) return;
   const { error } = await sb.from('movimientos').delete().eq('id', editingMovId);
   if (error) { movError.textContent = error.message; return; }
   movModal.classList.add('hidden');
@@ -2279,7 +2769,7 @@ deleteCatBtn.addEventListener('click', async () => {
     newCatError.textContent = `No se puede eliminar: tiene ${count} movimiento(s) cargado(s). Reasignalos o eliminalos primero.`;
     return;
   }
-  if (!confirm('¿Eliminar esta categoría?')) return;
+  if (!(await confirmar('¿Eliminar esta categoría?'))) return;
   const { error } = await sb.from('categorias').delete().eq('id', editingCatId);
   if (error) { newCatError.textContent = error.message; return; }
   categorias = categorias.filter(c => c.id !== editingCatId);
@@ -2349,7 +2839,7 @@ document.getElementById('addDescBtn').addEventListener('click', async () => {
 document.getElementById('descList').addEventListener('click', async (e) => {
   const delBtn = e.target.closest('.desc-delete');
   if (delBtn) {
-    if (!confirm('¿Eliminar esta descripción precargada?')) return;
+    if (!(await confirmar('¿Eliminar esta descripción precargada?'))) return;
     const { error } = await sb.from('descripciones_frecuentes').delete().eq('id', delBtn.dataset.id);
     if (error) { descManageError.textContent = error.message; return; }
     descripcionesFrecuentes = descripcionesFrecuentes.filter(d => d.id !== delBtn.dataset.id);
@@ -2401,8 +2891,21 @@ function leaveHistorico() {
   document.querySelector('.balance-card').classList.remove('hidden');
 }
 
+// Igual que el Histórico: la pantalla de Tarjetas oculta el período y el Saldo del mes.
+let inTarjetasView = false;
+const tarjetasView = document.getElementById('tarjetasView');
+const openTarjetasBtn = document.getElementById('openTarjetas');
+function leaveTarjetas() {
+  inTarjetasView = false;
+  tarjetasView.classList.add('hidden');
+  openTarjetasBtn.classList.remove('active');
+  document.querySelector('.period-selector').classList.remove('hidden');
+  document.querySelector('.balance-card').classList.remove('hidden');
+}
+
 function showMovView() {
   leaveHistorico();
+  leaveTarjetas();
   resumenView.classList.add('hidden');
   ahorrosView.classList.add('hidden');
   movView.classList.remove('hidden');
@@ -2424,6 +2927,7 @@ function hideSearchForOtherView() {
 
 async function showResumenView() {
   leaveHistorico();
+  leaveTarjetas();
   await loadResumen();
   movView.classList.add('hidden');
   ahorrosView.classList.add('hidden');
@@ -2439,6 +2943,7 @@ async function showResumenView() {
 
 async function showAhorrosView() {
   leaveHistorico();
+  leaveTarjetas();
   await loadAhorros();
   movView.classList.add('hidden');
   resumenView.classList.add('hidden');
@@ -2571,6 +3076,7 @@ async function loadHistorico(reset) {
 }
 
 async function showHistoricoView() {
+  leaveTarjetas();
   // Cada vez que se abre arranca limpia, para no confundirse con filtros de la vez anterior.
   document.getElementById('histSearch').value = '';
   document.getElementById('histTipo').value = '';
@@ -2596,6 +3102,245 @@ async function showHistoricoView() {
 
 openHistoricoBtn.addEventListener('click', () => {
   if (inHistoricoView) showMovView(); else showHistoricoView();
+});
+
+// ---------- Vista: Mis tarjetas (nombre + fecha de cierre + fecha de vencimiento) ----------
+// Primer paso de "Tarjetas y cuotas": acá solo se cargan y editan las tarjetas. Las fechas las
+// carga y ajusta el usuario a mano cuando cambian. Tabla `tarjetas` (crear_tabla_tarjetas.sql).
+let tarjetas = [];
+let editingTarjetaId = null;
+let tarjetasSinTabla = false;
+
+const fechaTarjeta = (iso) => iso
+  ? new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  : 'sin cargar';
+
+// En la descripción "Master MP Cuotas // Zapatillas" lo que identifica la compra es la nota
+// después del "//" (Zapatillas); si no hay nota se muestra la descripción entera.
+function notaDeCuota(descripcion) {
+  const d = String(descripcion || '');
+  const i = d.indexOf('//');
+  const nota = i >= 0 ? d.slice(i + 2).trim() : '';
+  return nota || d.trim();
+}
+
+// Mes que se está mirando en la pantalla (por defecto, el actual).
+let tjYear = new Date().getFullYear();
+let tjMonth = new Date().getMonth();
+let cuotasMovs = [];            // movimientos con cuotas (2 o más), para repartirlas por mes
+let cuotasSinColumna = false;   // todavía no se agregaron las columnas cuotas/tarjeta_id
+
+async function loadTarjetas() {
+  let res;
+  try {
+    res = await sb.from('tarjetas').select('*')
+      .order('orden', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true });
+  } catch (e) { res = { data: null, error: e }; }
+  tarjetasSinTabla = !!res.error; // casi seguro: la tabla todavía no se creó en esta base
+  if (res.error) console.error(res.error);
+  tarjetas = res.data || [];
+
+  // movimientos pagados en cuotas (si las columnas todavía no existen, la lista queda vacía)
+  let rc;
+  try {
+    rc = await sb.from('movimientos')
+      .select('*, categorias(id, nombre, tipo, icono, color)').gte('cuotas', 1).order('fecha', { ascending: true });
+  } catch (e) { rc = { data: null, error: e }; }
+  cuotasSinColumna = !!rc.error;
+  cuotasMovs = rc.data || [];
+  renderTarjetas();
+}
+
+// Lo que hay que pagar cada mes con una tarjeta, desde el mes actual: { k (año*12+mes): [{ m, c, anterior }] }.
+// Lo usan la pantalla "Mis tarjetas" y el export "Tarjetas", así siempre dan lo mismo.
+function mesesDeTarjeta(t, movs) {
+  const dia = diaDeCierre(t);
+  const hoyK = new Date().getFullYear() * 12 + new Date().getMonth();
+  const meses = {};
+  for (const m of movs) {
+    if (m.tarjeta_id !== t.id) continue;
+    // "Compras anteriores" (lo que ya se debía antes de usar la app): gasto común de 1 pago con
+    // cuota_inicio = su mes. Cuenta en ese mes como una cuota más.
+    if (!(m.cuotas > 1)) {
+      if (!m.cuota_inicio) continue;
+      const [ay, am] = m.cuota_inicio.split('-').map(Number);
+      const k = ay * 12 + (am - 1);
+      if (k >= hoyK) (meses[k] = meses[k] || []).push({ m, c: { n: 1, monto: Number(m.monto) }, anterior: true });
+      continue;
+    }
+    if (!dia && !m.cuota_inicio) continue;
+    for (const c of cuotasDeCompra(m, dia)) {
+      const k = c.y * 12 + c.m;
+      if (k < hoyK) continue;
+      (meses[k] = meses[k] || []).push({ m, c });
+    }
+  }
+  return meses;
+}
+
+function renderTarjetas() {
+  const list = document.getElementById('tarjetasList');
+  if (tarjetasSinTabla) {
+    list.innerHTML = '<div class="empty-msg">Falta crear la tabla de tarjetas en Supabase (crear_tabla_tarjetas.sql).</div>';
+  } else if (!tarjetas.length) {
+    list.innerHTML = '<div class="empty-msg">Todavía no cargaste tarjetas. Tocá + para agregar la primera.</div>';
+  } else {
+    // Esta pantalla solo da de alta las tarjetas con su cierre y vencimiento.
+    list.innerHTML = tarjetas.map(t => {
+      const dia = diaDeCierre(t);
+      // Desplegable con lo que hay que pagar cada mes con esta tarjeta; cada mes se abre y muestra sus cuotas.
+      const meses = mesesDeTarjeta(t, cuotasMovs);
+      const ks = Object.keys(meses).map(Number).sort((a, b) => a - b);
+      // Total pendiente en cuotas (suma de todos los meses del desplegable, desde el mes actual).
+      const totalCuotas = ks.reduce((s, k) => s + meses[k].reduce((a, x) => a + x.c.monto, 0), 0);
+      const sty = 'display:flex;justify-content:space-between;gap:8px;padding:8px 4px;';
+      const desplegable = ks.length ? `
+        <details class="tj-det" style="margin:4px 4px 0;padding:6px 12px;background:var(--surface-2,#2a2d34);border-radius:12px">
+          <summary style="cursor:pointer;padding:6px 0;font-size:14px">Cuotas por mes</summary>
+          ${ks.map(k => {
+            const tot = meses[k].reduce((s, x) => s + x.c.monto, 0);
+            return `<details style="border-top:1px solid rgba(255,255,255,.08)">
+              <summary style="${sty}cursor:pointer;list-style-position:inside"><b>${String(k % 12 + 1).padStart(2, '0')}/${String(Math.floor(k / 12)).slice(2)}</b><span class="amt neg">${fmt(tot)}</span></summary>
+              ${meses[k].map(x => `<div style="${sty}font-size:13px;opacity:.85"><span>${esc(notaDeCuota(x.m.descripcion))}${x.anterior ? '' : ` <b>${x.c.n}/${x.m.cuotas}</b>`}</span><span>${fmt(x.c.monto)}</span></div>`).join('')}
+            </details>`;
+          }).join('')}
+        </details>` : '';
+      return `
+      <div class="tarjeta-bloque">
+        <button type="button" class="mov-item tarjeta-item" data-id="${t.id}">
+          <div class="mov-icon icon-badge" style="background:#4ea8ff"><i data-lucide="credit-card"></i></div>
+          <div class="mid">
+            <div class="cat">${esc(t.nombre)}</div>
+            <div class="desc">${dia ? 'Cierra el día ' + dia : 'Sin fecha de cierre'}</div>
+          </div>
+          ${t.limite != null || totalCuotas ? `<div class="right">
+            ${t.limite != null ? `<div class="amt ${t.limite - totalCuotas >= 0 ? 'pos' : 'neg'}" title="Saldo disponible">${fmt(t.limite - totalCuotas)}</div>` : ''}
+            ${totalCuotas ? `<div class="amt neg" title="Consumo en cuotas">${fmt(totalCuotas)}</div>` : ''}
+          </div>` : ''}
+        </button>
+        ${desplegable}
+      </div>`;
+    }).join('');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+
+async function showTarjetasView() {
+  leaveHistorico();
+  movView.classList.add('hidden');
+  resumenView.classList.add('hidden');
+  ahorrosView.classList.add('hidden');
+  tarjetasView.classList.remove('hidden');
+  inTarjetasView = true;
+  inResumenView = false;
+  inAhorrosView = false;
+  openTarjetasBtn.classList.add('active');
+  openResumenBtn.classList.remove('active');
+  openAhorrosBtn.classList.remove('active');
+  openMovimientosBtn.classList.remove('active');
+  // Sin período ni saldos del mes en esta pantalla.
+  document.querySelector('.period-selector').classList.add('hidden');
+  document.querySelector('.balance-card').classList.add('hidden');
+  hideSearchForOtherView();
+  await loadTarjetas();
+}
+
+openTarjetasBtn.addEventListener('click', () => {
+  if (inTarjetasView) showMovView(); else showTarjetasView();
+});
+
+const tarjetaModal = document.getElementById('tarjetaModal');
+const tarjetaError = document.getElementById('tarjetaError');
+
+function openTarjetaModal(t) {
+  editingTarjetaId = t ? t.id : null;
+  document.getElementById('tarjetaTitle').textContent = t ? 'Editar tarjeta' : 'Nueva tarjeta';
+  document.getElementById('tarjetaNombre').value = t ? t.nombre : '';
+  document.getElementById('tarjetaCierre').value = t && t.cierre ? t.cierre : '';
+  document.getElementById('tarjetaVence').value = t && t.vencimiento ? t.vencimiento : '';
+  document.getElementById('tarjetaLimite').value = t && t.limite != null ? formatLimite(t.limite) : '';
+  document.getElementById('deleteTarjetaBtn').classList.toggle('hidden', !t);
+  tarjetaError.textContent = '';
+  tarjetaModal.classList.remove('hidden');
+  if (!t) document.getElementById('tarjetaNombre').focus();
+}
+
+// Límite de crédito: se escribe con o sin puntos de miles ("1.500.000" o "1500000,50").
+function parseLimite(str) {
+  const v = String(str || '').replace(/[$\s.]/g, '').replace(',', '.');
+  if (!v) return null;
+  const n = Number(v);
+  return isFinite(n) && n >= 0 ? n : NaN;
+}
+function formatLimite(n) { return Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 }); }
+// Separador de miles mientras se escribe, sin que el cursor salte.
+document.getElementById('tarjetaLimite').addEventListener('input', (e) => {
+  const el = e.target;
+  const pos = el.selectionStart;
+  const antes = el.value.slice(0, pos).replace(/[^0-9,]/g, '').length; // caracteres útiles antes del cursor
+  let v = el.value.replace(/[^0-9,]/g, '');
+  const i = v.indexOf(',');
+  if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/,/g, '').slice(0, 2);
+  const [ent, dec] = v.split(',');
+  const entFmt = (ent || '').replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  el.value = dec !== undefined ? entFmt + ',' + dec : entFmt;
+  let n = 0, c = 0;
+  while (c < el.value.length && n < antes) { if (el.value[c] !== '.') n++; c++; }
+  el.setSelectionRange(c, c);
+});
+document.getElementById('tarjetaLimite').addEventListener('blur', (e) => {
+  const n = parseLimite(e.target.value);
+  if (n != null && !isNaN(n)) e.target.value = formatLimite(n);
+});
+
+document.getElementById('addTarjetaBtn').addEventListener('click', () => openTarjetaModal(null));
+document.getElementById('tarjetasList').addEventListener('click', (e) => {
+  const item = e.target.closest('.tarjeta-item');
+  if (!item) return;
+  const t = tarjetas.find(x => x.id === item.dataset.id);
+  if (t) openTarjetaModal(t);
+});
+document.getElementById('cancelTarjeta').addEventListener('click', () => tarjetaModal.classList.add('hidden'));
+
+document.getElementById('saveTarjeta').addEventListener('click', async () => {
+  tarjetaError.textContent = '';
+  const nombre = document.getElementById('tarjetaNombre').value.trim();
+  const cierre = document.getElementById('tarjetaCierre').value || null;
+  const vencimiento = document.getElementById('tarjetaVence').value || null;
+  const limite = parseLimite(document.getElementById('tarjetaLimite').value);
+  if (!nombre) { tarjetaError.textContent = 'Poné un nombre para la tarjeta'; return; }
+  if (isNaN(limite)) { tarjetaError.textContent = 'El límite tiene que ser un número'; return; }
+  if (tarjetas.some(t => t.id !== editingTarjetaId && t.nombre.trim().toLowerCase() === nombre.toLowerCase())) {
+    tarjetaError.textContent = 'Ya existe una tarjeta con ese nombre'; return;
+  }
+  const btn = document.getElementById('saveTarjeta');
+  btn.disabled = true;
+  let error;
+  if (editingTarjetaId) {
+    ({ error } = await sb.from('tarjetas').update({ nombre, cierre, vencimiento, limite }).eq('id', editingTarjetaId));
+  } else {
+    const { data: userData } = await sb.auth.getUser();
+    const orden = tarjetas.length ? Math.max(...tarjetas.map(t => t.orden ?? 0)) + 1 : 0;
+    ({ error } = await sb.from('tarjetas').insert({ nombre, cierre, vencimiento, limite, orden, user_id: userData.user.id }));
+  }
+  btn.disabled = false;
+  if (error) {
+    tarjetaError.textContent = /limite/i.test(error.message)
+      ? 'Falta la columna "limite" en Supabase (agregar_limite_a_tarjetas.sql)' : error.message;
+    return;
+  }
+  tarjetaModal.classList.add('hidden');
+  await loadTarjetas();
+});
+
+document.getElementById('deleteTarjetaBtn').addEventListener('click', async () => {
+  if (!editingTarjetaId) return;
+  if (!(await confirmar('¿Eliminar esta tarjeta?'))) return;
+  const { error } = await sb.from('tarjetas').delete().eq('id', editingTarjetaId);
+  if (error) { tarjetaError.textContent = error.message; return; }
+  tarjetaModal.classList.add('hidden');
+  await loadTarjetas();
 });
 let histDebounce = null;
 document.getElementById('histSearch').addEventListener('input', () => {
@@ -2830,7 +3575,7 @@ document.getElementById('cancelRetiroExtra').addEventListener('click', () => {
 
 deleteRetiroExtraBtn.addEventListener('click', async () => {
   if (!editingRetiroExtraMov) return;
-  if (!confirm('¿Eliminar este retiro extra?')) return;
+  if (!(await confirmar('¿Eliminar este retiro extra?'))) return;
   const { error } = await sb.from('movimientos').delete().eq('id', editingRetiroExtraMov.id);
   if (error) { retiroExtraError.textContent = error.message; return; }
   retiroExtraModal.classList.add('hidden');
@@ -2863,7 +3608,7 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
 
   if (editingRetiroExtraMov) {
     const montoTxt = apartadoDe(retiroExtraLabel).moneda === 'usd' ? fmtUsd(monto) : fmt(monto);
-    if (!confirm(`¿Guardar los cambios de este retiro extra (${montoTxt})?`)) return;
+    if (!(await confirmar(`¿Guardar los cambios de este retiro extra (${montoTxt})?`))) return;
     const { error } = await sb.from('movimientos')
       .update({ monto, descripcion, fecha })
       .eq('id', editingRetiroExtraMov.id);
@@ -2872,7 +3617,7 @@ document.getElementById('saveRetiroExtra').addEventListener('click', async () =>
     const cat = categorias.find(c => c.nombre === 'AHORROS' && c.tipo === 'egreso');
     if (!cat) { retiroExtraError.textContent = 'No se encontró la categoría AHORROS'; return; }
     const montoTxt = apartadoDe(retiroExtraLabel).moneda === 'usd' ? fmtUsd(monto) : fmt(monto);
-    if (!confirm(`¿Confirmás el retiro extra de ${montoTxt} de ${retiroExtraLabel}? Resta directo del total ahorrado.`)) return;
+    if (!(await confirmar(`¿Confirmás el retiro extra de ${montoTxt} de ${retiroExtraLabel}? Resta directo del total ahorrado.`))) return;
     const { data: userData } = await sb.auth.getUser();
     const { error } = await sb.from('movimientos').insert({
       monto, categoria_id: cat.id, fecha,
@@ -3008,6 +3753,11 @@ function validarEncabezadoYPrevisualizar(rows) {
   // Solo se miran las primeras 5 columnas, y se salta la fila de SUBTOTAL que la app pone debajo
   // del último dato al exportar a Excel (lleva la palabra SUBTOTAL en la columna Descripción):
   // no es un movimiento.
+  // El export de Movimientos trae además la columna "Cuota" antes de Monto: se descarta, así ese
+  // archivo también se puede volver a importar.
+  rows = rows.filter((r, i) => i === 0 || !r.some(c => /^subtotal/i.test(String(c ?? '').trim())));
+  const h0 = (rows[0] || []).map(h => String(h ?? '').trim());
+  if (h0[4] === 'Cuota' && h0[5] === 'Monto') rows = rows.map(r => r.slice(0, 4).concat(r.slice(5, 6)));
   rows = rows.map(r => r.slice(0, IMPORT_HEADER.length))
     .filter((r, i) => i === 0 || !/^subtotal/i.test(String(r[3] ?? '').trim()));
   const header = rows[0].map(h => String(h ?? '').trim());
@@ -3041,6 +3791,10 @@ async function buildImportPreview(dataRows) {
         else row.error = 'Tipo inválido (debe ser Ingreso o Gasto)';
       }
       if (!row.error && !row.categoriaNombre) row.error = 'Falta la categoría';
+      // Las tarjetas (cuotas, compras anteriores) se cargan SOLO desde la app: el import no las toca,
+      // así no se duplican con las cuotas que la app ya calcula.
+      if (!row.error && row.categoriaNombre.toLowerCase() === 'tarjetas')
+        row.error = 'TARJETAS no se importa (se carga desde la app)';
 
       // El signo del monto no importa acá: quién manda es la columna Tipo. Así el
       // usuario puede tipear todo en positivo al armar el Excel a mano, sin acordarse
@@ -3232,6 +3986,8 @@ document.querySelectorAll('.clear-x').forEach((btn) => {
 // pantalla de monto en vez de cerrar todo. Tocar afuera solo cierra los modales de gestión:
 // en los de carga de datos un toque suelto perdería lo que se tipeó.
 const MODALES_CIERRE = [
+  ['confirmModal', 'confirmNo'],
+  ['tarjetaModal', 'cancelTarjeta'],
   ['newCatModal', 'cancelNewCat'],
   ['descManageModal', 'closeDescManage'],
   ['retiroExtraModal', 'cancelRetiroExtra'],
@@ -3265,16 +4021,26 @@ async function loadResumen() {
     .from('movimientos')
     // monto_usd tiene que venir: estos movimientos se abren en el modal de edición al tocarlos, y sin
     // este campo el box U$D de un ahorro en dólares aparecía en 0 aunque el dato estuviera guardado.
-    .select('id, fecha, monto, monto_usd, descripcion, categoria_id, es_retiro, es_retiro_extra, categorias(id, nombre, tipo, icono, color)')
+    .select('id, fecha, monto, monto_usd, descripcion, categoria_id, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(id, nombre, tipo, icono, color)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
+  // Compras en 2+ cuotas: la compra no cuenta en su mes (es crédito); cuenta cada cuota en el mes que cae.
+  let origs = [];
+  try {
+    if (!tarjetas.length) await loadTarjetas();
+    const rc = await sb.from('movimientos')
+      .select('*, categorias(id, nombre, tipo, icono, color)').not('tarjeta_id', 'is', null).or('cuotas.gte.2,cuota_inicio.not.is.null');
+    origs = rc.error ? [] : (rc.data || []);
+  } catch (e) { console.error(e); }
+  const filas = data.filter(m => !esOrigenCuotas(m)).concat(cuotasDelPeriodo(origs, start, end));
 
   resumenMovsById = {};
   const groups = {};
-  for (const m of data) {
+  for (const m of filas) {
     if (!m.categorias) continue; // los movimientos "(sin categoría)" no entran en este resumen
     if (m.es_retiro_extra) continue; // aislado, solo se ve en la vista Ahorros
-    resumenMovsById[m.id] = m;
+    // una cuota abre la compra original (misma id), no la fila virtual
+    resumenMovsById[m.id] = m._cuotaN ? origs.find(o => o.id === m.id) : m;
     const cid = m.categorias.id;
     groups[cid] = groups[cid] || { cat: m.categorias, total: 0, movs: [] };
     // Un retiro de AHORROS resta del total de la categoría (libera saldo), mismo
@@ -3321,10 +4087,11 @@ function toggleResumenDetail(btn, groups, cls) {
   const g = groups.find(x => x.cat.id === btn.dataset.cat);
   // Fecha más nueva primero y, a igual fecha, el monto mayor arriba (mismo criterio que
   // la lista de Movimientos: se busca por importe, así que el grande tiene que saltar).
+  const cmpMovs = comparadorMovs(g.movs);
   const sorted = g.movs.slice().sort((a, b) => {
     const porFecha = b.fecha.localeCompare(a.fecha);
     if (porFecha !== 0) return porFecha;
-    return Number(b.monto) - Number(a.monto);
+    return cmpMovs(a, b);
   });
   detail.innerHTML = sorted.map(m => {
     const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
@@ -3342,11 +4109,70 @@ function toggleResumenDetail(btn, groups, cls) {
   if (window.lucide) lucide.createIcons();
 }
 
+
+
+// Al tocar "Cuotas <tarjeta>" se despliega el detalle de cada cuota del mes (en vez de abrir un modal).
+function toggleDetalleCuotas(btn, mov) {
+  const sig = btn.nextElementSibling;
+  if (sig && sig.classList.contains('cuotas-detalle')) { sig.remove(); return; }
+  const det = document.createElement('div');
+  det.className = 'cuotas-detalle';
+  det.style.cssText = 'margin:-4px 4px 8px;padding:6px 14px;background:var(--card-2,#2a2d34);border-radius:0 0 12px 12px;font-size:13px';
+  det.innerHTML = (mov._detalle || []).slice().sort((a, b) => b.monto - a.monto).map(d =>
+    `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0"><span>${esc(d.desc)}${d.de ? ` <b>${d.n}/${d.de}</b>` : ''}</span><span>${fmt(d.monto)}</span></div>`).join('')
+    || '<div>Sin detalle</div>';
+  btn.after(det);
+}
+
+// Tooltip al tocar el importe de "compras anteriores": suma ese importe con el de "Cuotas <tarjeta>".
+let sumaTipEl = null;
+function cerrarSumaTip() { if (sumaTipEl) { sumaTipEl.remove(); sumaTipEl = null; } }
+function mostrarSumaTip(mov, lista, ancla) {
+  cerrarSumaTip();
+  // si la fila ya es origen de cuotas, su importe ya está dentro de "Cuotas <tarjeta>": no se suma de nuevo
+  if (mov._agrupada || esOrigenCuotas(mov) || !/compras anteriores/i.test(mov.descripcion || '')) return false;
+  const k = claveParTarjeta(mov);
+  if (!k) return false;
+  const par = lista.filter(m => m._agrupada && claveParTarjeta(m) === k);
+  if (!par.length) return false;
+  const filas = [mov, ...par];
+  const total = filas.reduce((s, m) => s + Number(m.monto), 0);
+  const el = document.createElement('div');
+  el.className = 'ahorros-tip';
+  el.style.cssText = 'position:fixed;z-index:60;min-width:200px';
+  el.innerHTML = filas.map(m => `<div class="tip-fila"><span>${m._agrupada ? esc(m.descripcion) : 'Compras anteriores'}</span><span>${fmt(m.monto)}</span></div>`).join('')
+    + `<div class="tip-fila tip-val" style="border-top:1px solid var(--accent);margin-top:4px;padding-top:4px"><span>Total</span><span style="color:var(--text)">${fmt(total)}</span></div>`;
+  document.body.appendChild(el);
+  const r = ancla.getBoundingClientRect();
+  el.style.top = Math.min(r.bottom + 6, window.innerHeight - el.offsetHeight - 8) + 'px';
+  el.style.left = Math.max(8, Math.min(r.right - el.offsetWidth, window.innerWidth - el.offsetWidth - 8)) + 'px';
+  sumaTipEl = el;
+  return true;
+}
+// En la PC también aparece al pasar el mouse por el importe (en el celu, al tocarlo).
+document.addEventListener('mouseover', (e) => {
+  const am = e.target.closest('.d-monto, .mov-item .right');
+  if (!am || (sumaTipEl && sumaTipEl._ancla === am)) return;
+  let mov, lista;
+  const rd = am.closest('.resumen-detail-item');
+  if (rd) { mov = resumenMovsById[rd.dataset.id]; lista = Object.values(resumenMovsById).filter(Boolean); }
+  else { const mi = am.closest('#movList .mov-item'); if (!mi) return; mov = currentMovs.find(m => m.id === mi.dataset.id); lista = currentMovs; }
+  if (mov && mostrarSumaTip(mov, lista, am)) sumaTipEl._ancla = am;
+});
+document.addEventListener('mouseout', (e) => {
+  if (sumaTipEl && sumaTipEl._ancla && e.target.closest('.d-monto, .mov-item .right') === sumaTipEl._ancla
+      && !sumaTipEl._ancla.contains(e.relatedTarget)) cerrarSumaTip();
+});
+document.addEventListener('click', (e) => { if (sumaTipEl && !e.target.closest('.d-monto, .mov-item .right')) cerrarSumaTip(); }, true);
+
 resumenView.addEventListener('click', (e) => {
   const item = e.target.closest('.resumen-detail-item');
   if (!item) return;
   const mov = resumenMovsById[item.dataset.id];
   if (!mov) return;
+  const am = e.target.closest('.d-monto');
+  if (am && mostrarSumaTip(mov, Object.values(resumenMovsById).filter(Boolean), am)) return;
+  if (mov._agrupada) { toggleDetalleCuotas(item, mov); return; }
   openEditMovModal(mov);
 });
 </script>
