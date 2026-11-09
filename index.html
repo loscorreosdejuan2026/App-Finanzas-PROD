@@ -686,7 +686,11 @@
       <div id="movView">
         <div class="section-title-row" style="padding: 0 20px;">
           <div class="section-title" id="movListTitle" style="padding: 0;">Movimientos</div>
-          <button type="button" class="icon-btn" id="toggleAllDays" title="Plegar todos los días"><i data-lucide="chevrons-down-up"></i></button>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="icon-btn" id="undoBtn" title="Deshacer" disabled style="opacity:.4;"><i data-lucide="undo-2"></i></button>
+            <button type="button" class="icon-btn" id="redoBtn" title="Rehacer" disabled style="opacity:.4;"><i data-lucide="redo-2"></i></button>
+            <button type="button" class="icon-btn" id="toggleAllDays" title="Plegar todos los días"><i data-lucide="chevrons-down-up"></i></button>
+          </div>
         </div>
         <div id="movList"></div>
       </div>
@@ -2528,6 +2532,27 @@ document.getElementById('saveNewCat').addEventListener('click', async () => {
   selectCategoriaAndAdvance(data.id);
 });
 
+// ---------- Deshacer (hasta 5 pasos, solo movimientos; se pierde al recargar la app) ----------
+const undoStack = [];
+const MOV_COLS = ['id','user_id','fecha','categoria_id','monto','descripcion','created_at','es_retiro','es_retiro_extra','monto_usd','cuotas','tarjeta_id','cuota_inicio'];
+const filaCruda = (m) => Object.fromEntries(MOV_COLS.filter(c => m[c] !== undefined).map(c => [c, m[c]]));
+const redoStack = [];
+function actualizarUndoBtn() {
+  const set = (id, st, txt) => { const b = document.getElementById(id); if (!b) return; b.disabled = !st.length; b.style.opacity = st.length ? '1' : '.4'; b.title = st.length ? `${txt} (${st.length})` : 'Nada para ' + txt.toLowerCase(); };
+  set('undoBtn', undoStack, 'Deshacer'); set('redoBtn', redoStack, 'Rehacer');
+}
+// op = { undo, redo }: funciones async que revierten / reaplican el cambio
+function pushUndo(op) { undoStack.push(op); while (undoStack.length > 5) undoStack.shift(); redoStack.length = 0; actualizarUndoBtn(); }
+async function correrPila(desde, hacia, cual) {
+  const op = desde.pop(); actualizarUndoBtn();
+  if (!op) return;
+  try { await op[cual](); hacia.push(op); } catch (e) { console.error(e); }
+  actualizarUndoBtn();
+  await refreshCurrentView();
+}
+document.getElementById('undoBtn').addEventListener('click', () => correrPila(undoStack, redoStack, 'undo'));
+document.getElementById('redoBtn').addEventListener('click', () => correrPila(redoStack, undoStack, 'redo'));
+
 // Guarda solo la categoría elegida para el movimiento mensual "Cuotas <tarjeta>" (el importe sigue automático).
 async function guardarOverrideCuotas(categoria_id) {
   const m = editingMovOrig;
@@ -2535,17 +2560,24 @@ async function guardarOverrideCuotas(categoria_id) {
   const ym = m.fecha.slice(0, 7);
   if (mpago && categoria_id === mpago.id) {
     // vuelve a la categoría automática: se quita el override si existía
-    if (m._overrideId) { const { error } = await sb.from('movimientos').delete().eq('id', m._overrideId); if (error) { movError.textContent = error.message; return; } }
+    if (m._overrideId) {
+      const { data: ovRow } = await sb.from('movimientos').select('*').eq('id', m._overrideId).single();
+      const { error } = await sb.from('movimientos').delete().eq('id', m._overrideId); if (error) { movError.textContent = error.message; return; }
+      if (ovRow) pushUndo({ undo: async () => { await sb.from('movimientos').insert(filaCruda(ovRow)); }, redo: async () => { await sb.from('movimientos').delete().eq('id', ovRow.id); } });
+    }
   } else if (m._overrideId) {
+    const antes = { categoria_id: m.categoria_id, monto: m.monto };
     const { error } = await sb.from('movimientos').update({ categoria_id, monto: m.monto }).eq('id', m._overrideId);
     if (error) { movError.textContent = error.message; return; }
+    pushUndo({ undo: async () => { await sb.from('movimientos').update(antes).eq('id', m._overrideId); }, redo: async () => { await sb.from('movimientos').update({ categoria_id, monto: m.monto }).eq('id', m._overrideId); } });
   } else {
     const { data: userData } = await sb.auth.getUser();
-    const { error } = await sb.from('movimientos').insert({
+    const { data: nuevo, error } = await sb.from('movimientos').insert({
       categoria_id, fecha: ym + '-01', monto: m.monto, descripcion: m.descripcion, es_retiro: false, es_retiro_extra: false,
       tarjeta_id: m.tarjeta_id, cuota_inicio: ym + '-01', user_id: userData.user.id
-    });
+    }).select('*').single();
     if (error) { movError.textContent = error.message; return; }
+    pushUndo({ undo: async () => { await sb.from('movimientos').delete().eq('id', nuevo.id); }, redo: async () => { await sb.from('movimientos').insert(filaCruda(nuevo)); } });
   }
   movModal.classList.add('hidden');
   await refreshCurrentView();
@@ -2610,17 +2642,21 @@ async function guardarMovimiento(categoria_id) {
   if (editingMovId) {
     const update = { monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd, ...datosCuotas };
     if (es_retiro_extra !== undefined) update.es_retiro_extra = es_retiro_extra;
+    const antes = editingMovOrig ? filaCruda(editingMovOrig) : null;
+    const editingMovIdPrev = editingMovId;
     const { error } = await sb.from('movimientos')
       .update(update)
       .eq('id', editingMovId);
     if (error) { movError.textContent = error.message; return; }
+    if (antes) pushUndo({ undo: async () => { const { id, ...resto } = antes; await sb.from('movimientos').update(resto).eq('id', id); }, redo: async () => { await sb.from('movimientos').update(update).eq('id', editingMovIdPrev); } });
   } else {
     const { data: userData } = await sb.auth.getUser();
-    const { error } = await sb.from('movimientos').insert({
+    const { data: nuevo, error } = await sb.from('movimientos').insert({
       monto, categoria_id, fecha, descripcion: descripcion || null, es_retiro, monto_usd,
       es_retiro_extra: false, user_id: userData.user.id, ...datosCuotas
-    });
+    }).select('*').single();
     if (error) { movError.textContent = error.message; return; }
+    pushUndo({ undo: async () => { await sb.from('movimientos').delete().eq('id', nuevo.id); }, redo: async () => { await sb.from('movimientos').insert(nuevo); } });
   }
 
   // Solo se guarda como frecuente la parte ANTERIOR al separador: la anotación libre es
@@ -2652,8 +2688,10 @@ deleteMovBtn.addEventListener('click', async () => {
   if (editingMovOrig && editingMovOrig._agrupada) {
     if (!editingMovOrig._overrideId) return;
     if (!(await confirmar('¿Volver este movimiento de cuotas a su categoría automática (M_PAGO)?'))) return;
+    const { data: ovRow } = await sb.from('movimientos').select('*').eq('id', editingMovOrig._overrideId).single();
     const { error } = await sb.from('movimientos').delete().eq('id', editingMovOrig._overrideId);
     if (error) { movError.textContent = error.message; return; }
+    if (ovRow) pushUndo({ undo: async () => { await sb.from('movimientos').insert(filaCruda(ovRow)); }, redo: async () => { await sb.from('movimientos').delete().eq('id', ovRow.id); } });
     movModal.classList.add('hidden');
     await refreshCurrentView();
     return;
@@ -2663,8 +2701,10 @@ deleteMovBtn.addEventListener('click', async () => {
   if (!(await confirmar(enCuotas
     ? `¿Eliminar esta compra? Se borran sus ${editingMovOrig.cuotas} cuotas de todos los meses.`
     : '¿Eliminar este movimiento?'))) return;
+  const borrado = editingMovOrig ? filaCruda(editingMovOrig) : null;
   const { error } = await sb.from('movimientos').delete().eq('id', editingMovId);
   if (error) { movError.textContent = error.message; return; }
+  if (borrado) pushUndo({ undo: async () => { await sb.from('movimientos').insert(borrado); }, redo: async () => { await sb.from('movimientos').delete().eq('id', borrado.id); } });
   movModal.classList.add('hidden');
   await refreshCurrentView();
 });
