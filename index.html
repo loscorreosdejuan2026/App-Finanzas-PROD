@@ -487,6 +487,9 @@
     display: flex; align-items: center; justify-content: space-between;
   }
 
+  .color-row { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+  .color-sw { width:28px; height:28px; border-radius:50%; border:2px solid transparent; padding:0; cursor:pointer; }
+  .color-sw.selected { border-color:#fff; box-shadow:0 0 0 2px var(--accent); }
   .icon-grid-full {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 2px;
     max-height: 208px; overflow-y: auto; padding: 4px 2px;
@@ -915,6 +918,7 @@
     <div class="field">
       <input type="text" id="manageCatNombre" placeholder="Nombre de la categoría">
     </div>
+    <div class="color-row" id="manageColorRow"></div>
     <div class="icon-grid-full" id="manageIconGrid"></div>
     <div class="error-msg" id="newCatError"></div>
     <div class="modal-actions-3">
@@ -1028,6 +1032,7 @@ document.getElementById('confirmNo').addEventListener('click', () => cerrarConfi
 
 let currentTipo = 'ingreso'; // tipo del movimiento que se está creando
 let manageCatTipo = 'ingreso'; // tipo elegido en el form de la sección Categorías
+let manageCatColor = null; // color elegido en el form de categorías
 let manageCatIcono = 'tag'; // ícono elegido en el form de la sección Categorías
 let categorias = [];
 let descripcionesFrecuentes = [];
@@ -1386,9 +1391,11 @@ function tarjetasPorDescripcion(desc) {
 }
 // La tarjeta del movimiento sale de la DESCRIPCIÓN (no hay desplegable): es la única tarjeta de
 // "Mis tarjetas" que coincide con ella. Si coinciden varias, hay que usar el nombre completo.
+// Categoría donde se cargan las compras con tarjeta (acepta singular o plural)
+const esNombreCompras = (n) => /^compras tarjetas?$/i.test((n || '').trim());
 function tarjetaDelMovimiento() {
   const cat = categorias.find(c => c.id === selectedCategoriaId);
-  if (!cat || cat.nombre.toUpperCase() !== 'TARJETAS' || cat.tipo !== 'egreso') return null;
+  if (!cat || !esNombreCompras(cat.nombre) || cat.tipo !== 'egreso') return null;
   const c = tarjetasPorDescripcion(document.getElementById('movDescripcion').value);
   return c.length === 1 ? c[0] : null;
 }
@@ -1396,7 +1403,7 @@ function tarjetaDelMovimiento() {
 function updateCuotasVisibility() {
   const cat = categorias.find(c => c.id === selectedCategoriaId);
   const desc = document.getElementById('movDescripcion').value;
-  const esTarjetas = !!cat && cat.nombre.toUpperCase() === 'TARJETAS' && cat.tipo === 'egreso';
+  const esTarjetas = !!cat && esNombreCompras(cat.nombre) && cat.tipo === 'egreso';
   const coinciden = esTarjetas ? tarjetasPorDescripcion(desc).length : 0;
   // El box aparece con la categoría TARJETAS cuando la descripción es de UNA de tus tarjetas
   // ("Master MP", "Visa Gal"…), sin necesidad de escribir "cuotas". Si la descripción coincide con
@@ -1493,7 +1500,7 @@ function renderDescSuggestions() {
   const cat = categorias.find(c => c.id === selectedCategoriaId);
   // Con la categoría TARJETAS los chips son SOLO las tarjetas cargadas en "Mis tarjetas" (nada de
   // las descripciones frecuentes viejas): elegir una es elegir la tarjeta.
-  const esTarjetas = !!cat && cat.nombre.toUpperCase() === 'TARJETAS' && cat.tipo === 'egreso';
+  const esTarjetas = !!cat && esNombreCompras(cat.nombre) && cat.tipo === 'egreso';
   const textos = esTarjetas
     ? tarjetas.map(t => t.nombre)
     : descripcionesFrecuentes.filter(d => d.categoria_id === selectedCategoriaId).map(d => d.texto);
@@ -1559,15 +1566,7 @@ function cuotasDeCompra(m, dia) {
 // anteriores" y "Cuotas <tarjeta>" de la misma tarjeta y fecha van siempre juntas (la de mayor importe
 // arriba), ubicadas donde corresponde al mayor de los dos importes.
 // Clave del par "compras anteriores" + "Cuotas <tarjeta>" (misma tarjeta y fecha); null si no es de ese par.
-function claveParTarjeta(m) {
-  let t = null;
-  if (m._agrupada) t = m.tarjeta_id;
-  else if (/compras anteriores/i.test(m.descripcion || '')) {
-    const c = tarjetasPorDescripcion(m.descripcion || '');
-    if (c.length === 1) t = c[0].id;
-  }
-  return t ? t + '|' + m.fecha : null;
-}
+function claveParTarjeta(m) { return null; } // ya no hay par: las compras anteriores viven dentro de "Pago <tarjeta>"
 function comparadorMovs(movs) {
   const clave = claveParTarjeta;
   const max = {};
@@ -1586,11 +1585,14 @@ function comparadorMovs(movs) {
 // "Override" de un mes de cuotas: movimiento real (descripción "Cuotas <tarjeta>", cuotas null, con tarjeta y
 // cuota_inicio = mes) que solo guarda la CATEGORÍA elegida para el movimiento mensual automático (ej. al pagar el
 // resumen se pasa de M_PAGO a TARJETAS). El importe sigue calculándose solo; el override no suma por sí mismo.
-const esOverrideCuotas = (m) => !!m.tarjeta_id && !!m.cuota_inicio && m.cuotas == null && /^cuotas\s/i.test(m.descripcion || '');
+const esOverrideCuotas = (m) => !!m.tarjeta_id && !!m.cuota_inicio && m.cuotas == null && /^(cuotas|pago)\s/i.test(m.descripcion || '');
 // Origen de cuotas = compra en 2+ cuotas (o el override de categoría). Las "compras anteriores" ya NO se pliegan dentro de
 // "Cuotas <tarjeta>" en ninguna categoría: son un movimiento visible que suma por sí mismo (la marca de tarjeta solo sirve
 // para que la pantalla Tarjetas las cuente) y quedan pegadas a "Cuotas" con el tooltip de la suma.
-const esOrigenCuotas = (m) => esOverrideCuotas(m) || m.cuotas > 1;
+const esCompraAnterior = (m) => !!m.tarjeta_id && !!m.cuota_inicio && !(m.cuotas > 1) && /compras anteriores/i.test(m.descripcion || '');
+// Compra en 1 pago con tarjeta (cuotas=1 + cuota_inicio): es una cuota más del resumen, igual que las de 2+
+const esUnPagoTarjeta = (m) => !!m.tarjeta_id && !!m.cuota_inicio && m.cuotas === 1; // incluye "compras anteriores"
+const esOrigenCuotas = (m) => esOverrideCuotas(m) || m.cuotas > 1 || esUnPagoTarjeta(m);
 function cuotasDelPeriodo(origs, start, end) {
   const porClave = {};
   const overrides = {};
@@ -1624,7 +1626,7 @@ function cuotasDelPeriodo(origs, start, end) {
     return Object.assign({}, g.base, {
       id: 'cuotas-' + k, fecha: g.fecha, monto: Math.round(g.monto * 100) / 100, cuotas: null, cuota_inicio: null,
       categoria_id: cat ? cat.id : g.base.categoria_id, categorias: cat, es_retiro: false, es_retiro_extra: false,
-      descripcion: 'Cuotas ' + g.nombre, _agrupada: true, _detalle: g.det || [], _overrideId: ov ? ov.id : null
+      descripcion: 'Pago ' + g.nombre, _agrupada: true, _detalle: g.det || [], _overrideId: ov ? ov.id : null
     });
   });
 }
@@ -1963,8 +1965,9 @@ function movItemHtml(m) {
   const credito = esOrigenCuotas(m) && !m._agrupada; // compra en cuotas / anteriores = crédito (amarillo)
   const cls = credito ? 'cred' : (tipo === 'ingreso' || m.es_retiro) ? 'pos' : 'neg';
   const fecha = new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-  const iconBg = m.categorias ? colorOf(m.categorias) : '#5b6169';
-  const iconName = m.categorias ? (m.categorias.icono || 'tag') : 'help-circle';
+  // las compras con tarjeta (crédito) llevan el mismo ícono amarillo que la card de Categorías
+  const iconBg = credito ? 'var(--yellow)' : (m.categorias ? colorOf(m.categorias) : '#5b6169');
+  const iconName = credito ? 'credit-card' : (m.categorias ? (m.categorias.icono || 'tag') : 'help-circle');
   return `
       <button type="button" class="mov-item" data-id="${m.id}">
         <div class="mov-icon icon-badge" style="background:${iconBg}">${iconSvg(iconName)}</div>
@@ -2575,12 +2578,13 @@ async function guardarMovimiento(categoria_id) {
   // movimiento ya las tenía y hay que limpiarlas), así los movimientos comunes no cambian.
   // Sin cuotas completadas = pago completo (1 cuota) en el siguiente resumen de la tarjeta.
   let datosCuotas = {};
-  const esAnterior = !!(editingMovOrig && editingMovOrig.tarjeta_id && editingMovOrig.cuota_inicio && !(editingMovOrig.cuotas > 1));
+  const esAnterior = !!(editingMovOrig && esCompraAnterior(editingMovOrig));
   if (!document.getElementById('movCuotas').classList.contains('hidden')) {
     const nCuotas = Math.max(1, parseInt(montoCuotasStr, 10) || 0);
     const t = tarjetaDelMovimiento(); // sale de la descripción
     if (nCuotas >= 2 && !t) { movError.textContent = 'La descripción tiene que ser el nombre de una tarjeta'; return; }
-    if (nCuotas >= 2 && !diaDeCierre(t)) { movError.textContent = `Cargá la fecha de cierre de ${t.nombre} en el apartado de tarjetas`; return; }
+    const anteriorDesc = /compras anteriores/i.test(descripcion || '');
+    if (t && !anteriorDesc && !diaDeCierre(t)) { movError.textContent = `Cargá la fecha de cierre de ${t.nombre} en el apartado de tarjetas`; return; }
     if (t) {
       datosCuotas = { cuotas: nCuotas, tarjeta_id: t.id };
       // Mes de la 1ª cuota: se fija al guardar con el cierre que tiene HOY la tarjeta, así si después se
@@ -2588,12 +2592,13 @@ async function guardarMovimiento(categoria_id) {
       // Al editar se conserva, salvo que cambie la fecha o la tarjeta.
       const o = editingMovOrig;
       const conservar = o && o.cuota_inicio && o.fecha === fecha && o.tarjeta_id === t.id;
-      if (nCuotas >= 2 && !conservar) {
+      if (anteriorDesc && nCuotas < 2) {
+        // "compra anterior": sigue el mes de su fecha
+        datosCuotas.cuota_inicio = fecha.slice(0, 8) + '01';
+      } else if (!conservar) {
+        // 1 pago o más: el mes de la 1ª cuota sale del cierre (1 pago = una cuota en el resumen)
         const c1 = calcularCuotas(fecha, monto, nCuotas, diaDeCierre(t))[0];
         datosCuotas.cuota_inicio = `${c1.y}-${String(c1.m + 1).padStart(2, '0')}-01`;
-      } else if (nCuotas < 2) {
-        // una "compra anterior" conserva su marca y sigue el mes de su fecha; un pago común no lleva
-        datosCuotas.cuota_inicio = o && o.cuota_inicio && !(o.cuotas > 1) ? fecha.slice(0, 8) + '01' : null;
       }
     }
     else if (editingMovHadCuotas && !esAnterior) datosCuotas = { cuotas: null, tarjeta_id: null, cuota_inicio: null };
@@ -2749,6 +2754,7 @@ function openNewCatModal(tipo) {
   editingCatId = null;
   manageCatTipo = tipo;
   manageCatIcono = 'tag';
+  manageCatColor = nextAvailableColor(tipo);
   newCatError.textContent = '';
   document.getElementById('newCatTitle').textContent = tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto';
   document.getElementById('manageCatNombre').value = '';
@@ -2762,6 +2768,7 @@ function openEditCatModal(cat) {
   editingCatId = cat.id;
   manageCatTipo = cat.tipo;
   manageCatIcono = cat.icono || 'tag';
+  manageCatColor = colorOf(cat);
   newCatError.textContent = '';
   document.getElementById('newCatTitle').textContent = 'Editar categoría';
   document.getElementById('manageCatNombre').value = cat.nombre;
@@ -2778,7 +2785,17 @@ document.getElementById('catManageModal').addEventListener('click', (e) => {
 });
 document.getElementById('cancelNewCat').addEventListener('click', () => newCatModal.classList.add('hidden'));
 
+const PICKER_COLORS = CAT_COLORS.concat(['#ffcc00']);
+function renderColorRow() {
+  document.getElementById('manageColorRow').innerHTML = PICKER_COLORS.map(c =>
+    `<button type="button" class="color-sw ${c === manageCatColor ? 'selected' : ''}" data-color="${c}" style="background:${c}"></button>`).join('');
+}
+document.getElementById('manageColorRow').addEventListener('click', (e) => {
+  const b = e.target.closest('.color-sw'); if (!b) return;
+  manageCatColor = b.dataset.color; renderColorRow(); renderIconGrid();
+});
 function renderIconGrid() {
+  renderColorRow();
   const el = document.getElementById('manageIconGrid');
   // ícono -> categoría que ya lo usa (mismo tipo, sin contar la que se está editando)
   const usedBy = {};
@@ -2813,7 +2830,7 @@ document.getElementById('manageSaveCat').addEventListener('click', async (e) => 
   e.target.disabled = true;
   if (editingCatId) {
     const current = categorias.find(c => c.id === editingCatId);
-    const color = current && current.color ? current.color : nextAvailableColor(manageCatTipo, editingCatId);
+    const color = manageCatColor || (current && current.color) || nextAvailableColor(manageCatTipo, editingCatId);
     const { data, error } = await sb.from('categorias')
       .update({ nombre, icono: manageCatIcono, color })
       .eq('id', editingCatId).select().single();
@@ -2826,7 +2843,7 @@ document.getElementById('manageSaveCat').addEventListener('click', async (e) => 
     const { data, error } = await sb.from('categorias')
       .insert({
         nombre, tipo: manageCatTipo, icono: manageCatIcono, orden: nextOrden(manageCatTipo),
-        color: nextAvailableColor(manageCatTipo), user_id: userData.user.id
+        color: manageCatColor || nextAvailableColor(manageCatTipo), user_id: userData.user.id
       })
       .select().single();
     e.target.disabled = false;
@@ -3880,8 +3897,8 @@ async function buildImportPreview(dataRows) {
       if (!row.error && !row.categoriaNombre) row.error = 'Falta la categoría';
       // Las tarjetas (cuotas, compras anteriores) se cargan SOLO desde la app: el import no las toca,
       // así no se duplican con las cuotas que la app ya calcula.
-      if (!row.error && row.categoriaNombre.toLowerCase() === 'tarjetas')
-        row.error = 'TARJETAS no se importa (se carga desde la app)';
+      if (!row.error && esNombreCompras(row.categoriaNombre))
+        row.error = 'COMPRAS TARJETA no se importa (se carga desde la app)';
 
       // El signo del monto no importa acá: quién manda es la columna Tipo. Así el
       // usuario puede tipear todo en positivo al armar el Excel a mano, sin acordarse
@@ -4138,10 +4155,11 @@ async function loadResumen() {
   // Card amarilla "TARJETAS" = lo COMPRADO en cuotas en el período (la compra completa, en su fecha). No suma a
   // Ingresos ni Gastos (el saldo real lo mueven las cuotas mensuales); sirve para ubicar la compra.
   // La card común "TARJETAS" sigue siendo lo PAGADO.
-  const compras = data.filter(m => m.cuotas > 1 && m.categorias && !m.es_retiro_extra).filter(coincideFiltro);
+  const compras = data.filter(m => esOrigenCuotas(m) && !esOverrideCuotas(m) && m.categorias && !m.es_retiro_extra).filter(coincideFiltro);
   if (compras.length) {
     compras.forEach(m => { resumenMovsById[m.id] = m; });
-    groups['__credito'] = { key: '__credito', credito: true, cat: compras[0].categorias, total: compras.reduce((s, m) => s + Number(m.monto), 0), movs: compras };
+    const catCompras = categorias.find(c => esNombreCompras(c.nombre) && c.tipo === 'egreso');
+    groups['__credito'] = { key: '__credito', credito: true, cat: catCompras || compras[0].categorias, total: compras.reduce((s, m) => s + Number(m.monto), 0), movs: compras };
   }
   const all = Object.values(groups);
   const ingreso = all.filter(g => g.cat.tipo === 'ingreso').sort((a, b) => b.total - a.total);
@@ -4161,7 +4179,7 @@ function renderResumenList(elId, groups, cls) {
   el.innerHTML = groups.map(g => `
     <div class="resumen-row">
       <button type="button" class="resumen-row-main" data-cat="${g.key || g.cat.id}"${g.credito ? ' title="Lo comprado en cuotas (no suma a Gastos)"' : ''}>
-        <div class="badge icon-badge" style="background:${g.credito ? 'var(--yellow)' : colorOf(g.cat)}">${iconSvg(g.cat.icono || 'tag')}</div>
+        <div class="badge icon-badge" style="background:${g.credito ? 'var(--yellow)' : colorOf(g.cat)}">${iconSvg(g.credito ? 'credit-card' : (g.cat.icono || 'tag'))}</div>
         <div class="name">${esc(g.cat.nombre)}</div>
         <div class="count">${g.movs.length}</div>
         <div class="total ${g.credito ? 'cred' : cls}">${fmt(g.total)}</div>
