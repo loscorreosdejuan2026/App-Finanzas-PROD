@@ -1797,14 +1797,12 @@ async function exportMovimientosCSV() {
     const signo = (tipo === 'egreso' && !m.es_retiro) ? -1 : 1;
     const tipoStr = tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
     const categoria = m.categorias ? m.categorias.nombre : '(sin categoría)';
-    // la cuota va en su propia columna (para filtrar), no pegada a la descripción
     const desc = (m.descripcion || '').replace(/ · cuota \d+\/\d+$/, '');
-    const cuota = m._cuotaN ? `${m._cuotaN}/${m._cuotaDe}` : '';
-    return [m.fecha, tipoStr, categoria, desc, cuota, signo * Number(m.monto)];
+    return [m.fecha, tipoStr, categoria, desc, signo * Number(m.monto)];
   });
 
   descargarTabla(`movimientos_${periodoFilenameSlug()}_${horaFilenameSlug()}`,
-    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Cuota', 'Monto'], filas, { fechaCols: [0], numCols: [5] });
+    ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'], filas, { fechaCols: [0], numCols: [4] });
 }
 
 async function exportResumenCSV() {
@@ -3897,11 +3895,9 @@ function validarEncabezadoYPrevisualizar(rows) {
   // Solo se miran las primeras 5 columnas, y se salta la fila de SUBTOTAL que la app pone debajo
   // del último dato al exportar a Excel (lleva la palabra SUBTOTAL en la columna Descripción):
   // no es un movimiento.
-  // El export de Movimientos trae además la columna "Cuota" antes de Monto: se descarta, así ese
-  // archivo también se puede volver a importar.
+  // Solo se acepta el formato Fecha | Tipo | Categoría | Descripción | Monto (sin columna Cuota).
   rows = rows.filter((r, i) => i === 0 || !r.some(c => /^subtotal/i.test(String(c ?? '').trim())));
   const h0 = (rows[0] || []).map(h => String(h ?? '').trim());
-  if (h0[4] === 'Cuota' && h0[5] === 'Monto') rows = rows.map(r => r.slice(0, 4).concat(r.slice(5, 6)));
   rows = rows.map(r => r.slice(0, IMPORT_HEADER.length))
     .filter((r, i) => i === 0 || !/^subtotal/i.test(String(r[3] ?? '').trim()));
   const header = rows[0].map(h => String(h ?? '').trim());
@@ -3939,6 +3935,20 @@ async function buildImportPreview(dataRows) {
       // así no se duplican con las cuotas que la app ya calcula.
       if (!row.error && esNombreCompras(row.categoriaNombre))
         row.error = 'COMPRAS TARJETA no se importa (se carga desde la app)';
+      // La línea mensual "Pago <tarjeta>" (o la vieja "Cuotas <tarjeta>") la arma la app sola: si se importara
+      // quedaría duplicada con la automática (un export de Movimientos la trae).
+      if (!row.error) {
+        const mt = row.descripcion.match(/^(pago|cuotas)\s+(.+)$/i);
+        if (mt && tarjetas.some(t => t.nombre.trim().toLowerCase() === mt[2].trim().toLowerCase()))
+          row.error = 'Línea de tarjeta: se calcula sola desde la app';
+      }
+      // Consumo con la descripción de una tarjeta (ej. "Master MP"): se carga desde la app, si no suma de más
+      // con la línea "Pago <tarjeta>".
+      if (!row.error) {
+        const base = row.descripcion.split('//')[0].trim().toLowerCase();
+        if (base && tarjetas.some(t => t.nombre.trim().toLowerCase() === base))
+          row.error = 'Consumo de tarjeta: cargalo desde la app';
+      }
 
       // El signo del monto no importa acá: quién manda es la columna Tipo. Así el
       // usuario puede tipear todo en positivo al armar el Excel a mano, sin acordarse
