@@ -2027,7 +2027,10 @@ function renderMovimientos(movs, emptyMsg) {
     });
   }
   list.innerHTML = grupos.map(g => {
-    const fechaLarga = new Date(g.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
+    const dGrupo = new Date(g.fecha + 'T00:00:00');
+    // "mar 1 de diciembre": día de la semana abreviado delante de la fecha
+    const fechaLarga = ['dom','lun','mar','mié','jue','vie','sáb'][dGrupo.getDay()] + ' '
+      + dGrupo.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
     return `
       <div class="day-group open">
         <button type="button" class="day-header">
@@ -2479,14 +2482,26 @@ document.getElementById('backToMonto').addEventListener('click', () => {
   stepMonto.classList.remove('hidden');
 });
 
-document.getElementById('saveMovBtn').addEventListener('click', () => {
+document.getElementById('saveMovBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return; // ya está guardando: un segundo toque no guarda dos veces
   const monto = parseFloat(montoStr.replace(',', '.'));
   const descripcion = document.getElementById('movDescripcion').value.trim();
   if (!monto || monto <= 0) { movError.textContent = 'Ingresá un monto válido'; return; }
   if (!selectedCategoriaId) { movError.textContent = 'Elegí una categoría'; return; }
   if (!descripcion) { movError.textContent = 'Completá la descripción'; return; }
   movError.textContent = '';
-  guardarMovimiento(selectedCategoriaId);
+  // Mientras espera a Supabase el botón queda bloqueado y lo dice; si la red falla, se avisa
+  // y se puede volver a tocar Guardar (antes quedaba la ventana abierta sin ningún aviso).
+  btn.disabled = true; btn.textContent = 'Guardando…'; btn.style.opacity = '.6';
+  try {
+    await guardarMovimiento(selectedCategoriaId);
+  } catch (err) {
+    console.error(err);
+    movError.textContent = 'No se pudo guardar. Revisá la conexión y volvé a tocar Guardar.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar'; btn.style.opacity = '';
+  }
 });
 
 function nextOrden(tipo) {
