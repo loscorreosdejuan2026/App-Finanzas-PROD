@@ -1164,7 +1164,7 @@ function renderPeriodLabel() {
 async function refreshBalance() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb.from('movimientos')
-    .select('monto, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
+    .select('monto, descripcion, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)') // descripcion: sin ella no se reconoce el override "Pago <tarjeta>" y se sumaba 2 veces
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
   // mismo criterio que Movimientos: la compra en 2+ cuotas no suma (renderBalance la salta), sí sus cuotas
@@ -1809,7 +1809,7 @@ async function exportResumenCSV() {
   const { start, end } = getPeriodRange();
   const { data, error } = await sb
     .from('movimientos')
-    .select('monto, categoria_id, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
+    .select('monto, descripcion, categoria_id, es_retiro, es_retiro_extra, cuotas, tarjeta_id, cuota_inicio, categorias(nombre, tipo)')
     .gte('fecha', start).lte('fecha', end);
   if (error) { console.error(error); return; }
   // igual que la pantalla: la compra en 2+ cuotas no cuenta en su mes, sí cada cuota
