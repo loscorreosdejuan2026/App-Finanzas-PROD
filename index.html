@@ -2028,9 +2028,10 @@ function renderMovimientos(movs, emptyMsg) {
   }
   list.innerHTML = grupos.map(g => {
     const dGrupo = new Date(g.fecha + 'T00:00:00');
-    // "mar 1 de diciembre": día de la semana abreviado delante de la fecha
+    // "mar 1 de dic": día de la semana y mes abreviados
     const fechaLarga = ['dom','lun','mar','mié','jue','vie','sáb'][dGrupo.getDay()] + ' '
-      + dGrupo.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
+      + dGrupo.getDate() + ' de '
+      + ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][dGrupo.getMonth()];
     return `
       <div class="day-group open">
         <button type="button" class="day-header">
